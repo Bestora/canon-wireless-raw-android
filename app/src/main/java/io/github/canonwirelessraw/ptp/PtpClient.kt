@@ -1,0 +1,176 @@
+package io.github.canonwirelessraw.ptp
+
+import android.util.Log
+import java.io.OutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+private const val TAG = "PtpClient"
+
+/** PTP object format code for an association (folder). */
+private const val FORMAT_ASSOCIATION = 0x3001
+
+/** PTP root parent handle (0xFFFFFFFF): objects with no parent, i.e. top level of the tree. */
+private const val PARENT_ROOT = -1
+
+/** Cancelled-download sentinel code (see [PtpClient.cancelIo]). */
+private const val CODE_CANCELLED = -99
+
+/**
+ * Port implemented by [PtpClient]; declared here so Task 8 (camera repository) can depend on
+ * an interface instead of the concrete coroutine wrapper (e.g. for fakes in tests).
+ * Default values live here (not on the `override` in PtpClient — Kotlin forbids re-declaring
+ * defaults on an override) so callers get the same ergonomics through either type.
+ */
+interface PtpPort {
+    suspend fun connect(
+        ip: String,
+        port: Int = 15740,
+        name: String = "Canon Wireless RAW",
+        guid: ByteArray,
+        eosMode: Boolean = true,
+    )
+    suspend fun listObjects(): List<CameraObject>
+    suspend fun readPartial(handle: Int, offset: Long, len: Int): ByteArray
+    suspend fun downloadTo(obj: CameraObject, sink: OutputStream, chunk: Int = 1 shl 20, onProgress: (Long) -> Unit)
+    fun cancelIo()
+    suspend fun disconnect()
+}
+
+class PtpException(val step: String, val code: Int) : Exception("$step failed: $code")
+
+/**
+ * Coroutine wrapper around [PtpNative]. All PTP transactions run on [Dispatchers.IO] and are
+ * serialized by [mutex] (the underlying PtpRuntime is not safe for concurrent transactions).
+ * [cancelIo] is intentionally NOT guarded by the mutex: it must be callable while a transfer
+ * is blocked inside the mutex, to interrupt it.
+ */
+class PtpClient : PtpPort {
+    private val rt: Long = PtpNative.create()
+    private val mutex = Mutex()
+
+    @Volatile
+    private var cancelled = false
+
+    private val _connected = MutableStateFlow(false)
+    val connected: StateFlow<Boolean> = _connected.asStateFlow()
+
+    override suspend fun connect(ip: String, port: Int, name: String, guid: ByteArray, eosMode: Boolean) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                cancelled = false
+                val connectRc = PtpNative.connect(rt, ip, port, guid, name)
+                if (connectRc != 0) throw PtpException("connect", connectRc)
+                val sessionRc = PtpNative.openSession(rt)
+                if (sessionRc != 0) throw PtpException("openSession", sessionRc)
+                if (eosMode) {
+                    val remoteRc = PtpNative.eosSetRemoteMode(rt, 1)
+                    if (remoteRc != 0) Log.w(TAG, "eosSetRemoteMode failed: $remoteRc")
+                    val eventRc = PtpNative.eosSetEventMode(rt, 1)
+                    if (eventRc != 0) Log.w(TAG, "eosSetEventMode failed: $eventRc")
+                }
+                _connected.value = true
+            }
+        }
+    }
+
+    override suspend fun listObjects(): List<CameraObject> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val storageIds = PtpNative.getStorageIds(rt) ?: IntArray(0)
+            val result = mutableListOf<CameraObject>()
+            for (storageId in storageIds) {
+                val flat = PtpNative.getObjectHandles(rt, storageId, 0, 0) ?: IntArray(0)
+                if (flat.isNotEmpty()) {
+                    for (handle in flat) addFile(handle = handle, out = result)
+                } else {
+                    // Flat listing unsupported/empty on this device: walk the folder tree instead.
+                    walkFolder(storageId, PARENT_ROOT, result)
+                }
+            }
+            result
+        }
+    }
+
+    override suspend fun readPartial(handle: Int, offset: Long, len: Int): ByteArray = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            PtpNative.getPartialObject(rt, handle, offset, len)
+                ?: throw PtpException("getPartialObject", PtpNative.lastError(rt))
+        }
+    }
+
+    override suspend fun downloadTo(obj: CameraObject, sink: OutputStream, chunk: Int, onProgress: (Long) -> Unit) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                cancelled = false
+                var offset = 0L
+                while (offset < obj.size) {
+                    val len = minOf(chunk.toLong(), obj.size - offset).toInt()
+                    val data = PtpNative.getPartialObject(rt, obj.handle, offset, len)
+                        ?: throw if (cancelled) {
+                            PtpException("download", CODE_CANCELLED)
+                        } else {
+                            PtpException("getPartialObject", PtpNative.lastError(rt))
+                        }
+                    sink.write(data)
+                    // Short read before the expected end-of-object: guard against looping forever.
+                    val shortRead = data.size < len && offset + len < obj.size
+                    offset += data.size
+                    onProgress(offset)
+                    if (shortRead) break
+                }
+            }
+        }
+    }
+
+    override fun cancelIo() {
+        cancelled = true
+        PtpNative.cancel(rt)
+    }
+
+    override suspend fun disconnect() {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                PtpNative.disconnect(rt)
+                _connected.value = false
+            }
+        }
+    }
+
+    /** Adds [handle]'s object to [out] unless it is a folder (association). */
+    private fun addFile(handle: Int, out: MutableList<CameraObject>) {
+        val info = PtpNative.getObjectInfo(rt, handle) ?: return
+        val format = info[3].toIntOrNull() ?: 0
+        val assocType = info[5].toIntOrNull() ?: 0
+        if (assocType != 0 || format == FORMAT_ASSOCIATION) return
+        out += toCameraObject(handle, info, format)
+    }
+
+    /** Recursively descends into [parent], collecting files and recursing into sub-folders. */
+    private fun walkFolder(storageId: Int, parent: Int, out: MutableList<CameraObject>) {
+        val handles = PtpNative.getObjectHandles(rt, storageId, 0, parent) ?: return
+        for (handle in handles) {
+            val info = PtpNative.getObjectInfo(rt, handle) ?: continue
+            val format = info[3].toIntOrNull() ?: 0
+            val assocType = info[5].toIntOrNull() ?: 0
+            if (assocType != 0 || format == FORMAT_ASSOCIATION) {
+                walkFolder(storageId, handle, out)
+            } else {
+                out += toCameraObject(handle, info, format)
+            }
+        }
+    }
+
+    private fun toCameraObject(handle: Int, info: Array<String>, format: Int) = CameraObject(
+        handle = handle,
+        name = info[0],
+        size = info[1].toLongOrNull() ?: 0L,
+        takenAtMillis = parsePtpDate(info[2]),
+        kind = kindFromName(info[0]),
+        format = format,
+    )
+}
