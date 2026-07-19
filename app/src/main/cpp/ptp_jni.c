@@ -35,30 +35,52 @@ void ptpusb_free_device_list_entry(void *ptr) { (void)ptr; }
 
 // --- custom PTP/IP init command request carrying our pairing GUID ---
 
-// Modeled 1:1 on libpict/src/operations.c ptpip_init_command_request(), which
-// hardcodes 0xffffffff GUIDs. Same packet layout (PtpIpInitPacket: length, type
-// PTPIP_INIT_COMMAND_REQ, 16-byte GUID, unicode device_name, version) and same
-// ACK handling (read 4-byte length then the rest, fail on PTPIP_INIT_FAIL). The
-// only change: the caller's 16-byte GUID is copied over guid1..guid4 so the
-// camera can re-recognize this phone across pairings.
+// Based on libpict/src/operations.c ptpip_init_command_request() (which hardcodes
+// 0xffffffff GUIDs), with two corrections needed for real Canon cameras:
+//   1. the caller's 16-byte pairing GUID replaces the hardcoded one, so the camera
+//      re-recognizes this phone across pairings, and
+//   2. the packet is sent at its TRUE variable length instead of sizeof(struct):
+//      libpict's PtpIpInitPacket fixes device_name[8] and pins the version fields at
+//      a fixed offset, so a real (UTF-16LE) device name gets truncated mid-string and
+//      the version fields are never transmitted. Canon's init command request is
+//      variable length: header(8) + GUID(16) + UTF-16LE name incl. null terminator +
+//      version(4). We build it into r->data (~1 MB, ample) and send exactly that many
+//      bytes. ACK handling is byte-for-byte the upstream logic.
 static int init_command_request_guid(struct PtpRuntime *r, const uint8_t *guid, const char *name) {
-    struct PtpIpInitPacket *p = (struct PtpIpInitPacket *)r->data;
-    memset(p, 0, sizeof(struct PtpIpInitPacket));
-    p->length = sizeof(struct PtpIpInitPacket);
+    size_t name_len = strlen(name);
+    if (name_len > 32) {
+        LOGE("init request: device name too long (%zu chars, max 32)", name_len);
+        return PTP_CHECK_CODE; // reject, never truncate
+    }
 
+    // length(4) + type(4) + GUID(16) + UTF-16LE name incl. null terminator + version(4)
+    uint32_t total = 8 + 16 + (uint32_t)(2 * (name_len + 1)) + 4;
+
+    uint8_t *buf = (uint8_t *)r->data;
+    memset(buf, 0, total);
+
+    struct PtpIpInitPacket *p = (struct PtpIpInitPacket *)buf;
+    p->length = total;
     p->type = PTPIP_INIT_COMMAND_REQ;
 
     // guid1..guid4 are 4 contiguous packed uint32 (ptp.h uses #pragma pack(1)),
-    // i.e. exactly 16 bytes. Copy the raw pairing bytes as received from the camera.
+    // i.e. exactly 16 bytes at offset 8. Copy the raw pairing bytes verbatim.
     memcpy(&p->guid1, guid, 16);
 
-    p->minor_ver = 1;
+    // UTF-16LE name at offset 24 (== offsetof device_name), 2*(name_len+1) bytes; the
+    // terminator's low byte comes from the memset above.
+    ptp_write_unicode_string((char *)buf + 24, name);
 
-    ptp_write_unicode_string(p->device_name, name);
+    // Version 1.0 immediately after the name terminator. Byte order exactly as libpict's
+    // struct initializes it: major_ver=0, minor_ver=1  ->  00 00 01 00 (LE u32 0x00010000).
+    uint8_t *ver = buf + 24 + 2 * (name_len + 1);
+    ver[0] = 0; ver[1] = 0; // major_ver (uint16 LE) = 0
+    ver[2] = 1; ver[3] = 0; // minor_ver (uint16 LE) = 1
 
     if (ptpip_cmd_write(r, r->data, p->length) != (int)p->length) return PTP_IO_ERR;
 
-    // Read the packet size, then receive the rest
+    // ACK handling unchanged from upstream: read the response length, then the rest.
+    // p points into r->data, so p->length becomes the RESPONSE length after this read.
     int x = ptpip_cmd_read(r, r->data, 4);
     if (x < 0) return PTP_IO_ERR;
     x = ptpip_cmd_read(r, r->data + 4, p->length - 4);
