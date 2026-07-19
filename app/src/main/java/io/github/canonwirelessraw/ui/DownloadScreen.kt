@@ -84,9 +84,10 @@ fun DownloadScreen(container: AppContainer, items: List<GalleryItem>, onDone: ()
         running = false
     }
 
-    // Disabled while the batch runs: back falls through to the default system behaviour (the
-    // download dies with the screen, see the ponytail note above). Once the batch ends, back
+    // Consumed while the batch runs (no-op — use the Abbrechen button), so back does NOT fall
+    // through to the Activity default and kill the app mid-download. Once the batch ends, back
     // returns to the gallery just like "Fertig".
+    BackHandler(enabled = running) { /* blockiert waehrend Download; Abbrechen-Button nutzen */ }
     BackHandler(enabled = !running) { onDone() }
 
     MaterialTheme {
