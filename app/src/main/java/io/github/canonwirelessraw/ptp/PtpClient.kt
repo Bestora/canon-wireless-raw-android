@@ -118,9 +118,14 @@ class PtpClient : PtpPort {
     override suspend fun downloadTo(obj: CameraObject, sink: OutputStream, chunk: Int, onProgress: (Long) -> Unit) {
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                cancelled = false
+                // Do NOT reset `cancelled` here — it's cleared only in connect(). Resetting it
+                // per batch item would clear a pending cancel and surface the kill-switch failure
+                // as a plain getPartialObject error instead of the CODE_CANCELLED sentinel.
                 var offset = 0L
                 while (offset < obj.size) {
+                    // Already cancelled (e.g. a later batch item after the cancel): fail fast with
+                    // the sentinel so the caller recognizes it as cancel, not a per-item failure.
+                    if (cancelled) throw PtpException("download", CODE_CANCELLED)
                     val len = minOf(chunk.toLong(), obj.size - offset).toInt()
                     val data = PtpNative.getPartialObject(rt, obj.handle, offset, len)
                         ?: throw if (cancelled) {

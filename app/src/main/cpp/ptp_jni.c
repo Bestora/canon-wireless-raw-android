@@ -83,6 +83,10 @@ static int init_command_request_guid(struct PtpRuntime *r, const uint8_t *guid, 
     // p points into r->data, so p->length becomes the RESPONSE length after this read.
     int x = ptpip_cmd_read(r, r->data, 4);
     if (x < 0) return PTP_IO_ERR;
+    // p->length is now the camera-supplied response length. Bound it before the
+    // second read: a hostile responder could send <8 (header underflows p->length-4)
+    // or a huge value overflowing r->data (allocated to data_length). Reject both.
+    if (p->length < 8 || p->length > r->data_length) return PTP_IO_ERR;
     x = ptpip_cmd_read(r, r->data + 4, p->length - 4);
     if (x < 0) return PTP_IO_ERR;
 
@@ -162,6 +166,12 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_connect(JNIEnv *env, jobject thiz,
     LOGI("connect: established to %s:%d", ip_c, (int)port);
 
 done:
+    // On any failure, close whatever sockets ptpip_connect/_events opened so the next
+    // connect() (e.g. the "-2 confirm on camera and retry" path) doesn't leak fds by
+    // overwriting them. ptpip_device_close only close()s non-zero fds and re-zeros them,
+    // so it's safe on the -1 path (fds still 0) and never double-closes. Success keeps
+    // its sockets open.
+    if (result != 0) ptpip_device_close(r);
     (*env)->ReleaseStringUTFChars(env, ip, ip_c);
     (*env)->ReleaseStringUTFChars(env, name, name_c);
     return set_err(result);

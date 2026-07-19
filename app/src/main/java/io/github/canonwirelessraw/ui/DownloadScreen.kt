@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -61,13 +62,21 @@ private class DownloadRow(val item: GalleryItem) {
  * Nutzer es brauchen.
  */
 @Composable
-fun DownloadScreen(container: AppContainer, items: List<GalleryItem>, onDone: () -> Unit) {
+fun DownloadScreen(
+    container: AppContainer,
+    items: List<GalleryItem>,
+    onDone: () -> Unit,
+    onSessionDead: () -> Unit,
+) {
     val context = LocalContext.current
     val repo = container.repo
 
     val rows = remember(items) { items.map { DownloadRow(it) } }
     val doneUris = remember { mutableStateListOf<Uri>() }
     var running by remember { mutableStateOf(true) }
+    // A user-cancelled batch leaves the PTP session dead (io_kill_switch latched); leaving must
+    // route to reconnect, not back to a stale Gallery. See onSessionDead below.
+    var wasCancelled by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         for (row in rows) {
@@ -78,17 +87,27 @@ fun DownloadScreen(container: AppContainer, items: List<GalleryItem>, onDone: ()
                 doneUris.add(uri)
             } catch (e: Exception) {
                 row.status = RowStatus.Failed(e.message ?: e.toString())
-                if (isCancelDownload(e)) break
+                if (isCancelDownload(e)) {
+                    wasCancelled = true
+                    break
+                }
             }
         }
         running = false
     }
 
+    // Leaving the screen mid-batch (rotation, nav) fires the kill-switch so the in-flight native
+    // transfer aborts instead of running on as a zombie inside runBlocking. Reads current `running`.
+    DisposableEffect(Unit) { onDispose { if (running) repo.cancel() } }
+
+    // After a cancel the session is dead → reconnect; otherwise back to the gallery.
+    val leave = { if (wasCancelled) onSessionDead() else onDone() }
+
     // Consumed while the batch runs (no-op — use the Abbrechen button), so back does NOT fall
     // through to the Activity default and kill the app mid-download. Once the batch ends, back
-    // returns to the gallery just like "Fertig".
+    // returns to the gallery (or reconnect, if cancelled) just like "Fertig".
     BackHandler(enabled = running) { /* blockiert waehrend Download; Abbrechen-Button nutzen */ }
-    BackHandler(enabled = !running) { onDone() }
+    BackHandler(enabled = !running) { leave() }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -114,7 +133,7 @@ fun DownloadScreen(container: AppContainer, items: List<GalleryItem>, onDone: ()
                             onClick = { context.startActivity(Saver.shareIntent(doneUris)) },
                             modifier = Modifier.weight(1f),
                         ) { Text("Teilen…") }
-                        Button(onClick = onDone, modifier = Modifier.weight(1f)) { Text("Fertig") }
+                        Button(onClick = leave, modifier = Modifier.weight(1f)) { Text("Fertig") }
                     }
                 }
             }

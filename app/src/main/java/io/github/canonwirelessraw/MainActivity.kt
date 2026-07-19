@@ -51,7 +51,16 @@ fun App() {
             onDebug = { screen = Screen.Debug },
         )
         Screen.Gallery -> GalleryScreen(AppContainer) { items -> screen = Screen.Download(items) }
-        is Screen.Download -> DownloadScreen(AppContainer, s.items) { screen = Screen.Gallery }
+        is Screen.Download -> DownloadScreen(
+            AppContainer,
+            s.items,
+            onDone = { screen = Screen.Gallery },
+            // Cancelled batch left the session dead: drop it and route back to reconnect.
+            onSessionDead = {
+                scope.launch { runCatching { AppContainer.repo.disconnect() } }
+                screen = Screen.Connect
+            },
+        )
         Screen.Debug -> DebugScreen(AppContainer)
     }
 }

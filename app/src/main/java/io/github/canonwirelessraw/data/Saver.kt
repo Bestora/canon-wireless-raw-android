@@ -15,7 +15,7 @@ object Saver {
     fun saveToPictures(context: Context, name: String, mime: String, body: (OutputStream) -> Unit): Uri {
         val contentResolver = context.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(MediaStore.Images.Media.DISPLAY_NAME, sanitizeDisplayName(name))
             put(MediaStore.Images.Media.MIME_TYPE, mime)
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CanonRAW")
             put(MediaStore.Images.Media.IS_PENDING, 1)
@@ -43,6 +43,11 @@ object Saver {
 
         return uri
     }
+
+    /** A hostile PTP responder can supply `../../x.jpg`; keep only the final path segment (both
+     *  separators) so it can't traverse out of Pictures/CanonRAW. Blank → "image". */
+    internal fun sanitizeDisplayName(name: String): String =
+        name.substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
 
     fun mimeFor(kind: FileKind): String = when (kind) {
         FileKind.CR3 -> "image/x-canon-cr3"
