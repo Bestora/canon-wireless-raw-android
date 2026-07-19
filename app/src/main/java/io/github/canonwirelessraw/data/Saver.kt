@@ -1,5 +1,6 @@
 package io.github.canonwirelessraw.data
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -13,7 +14,7 @@ object Saver {
      *  Rückgabe: content-Uri der fertigen Datei. */
     fun saveToPictures(context: Context, name: String, mime: String, body: (OutputStream) -> Unit): Uri {
         val contentResolver = context.contentResolver
-        val values = android.content.ContentValues().apply {
+        val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, mime)
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CanonRAW")
@@ -24,17 +25,19 @@ object Saver {
             ?: throw IllegalStateException("MediaStore insert failed")
 
         try {
-            contentResolver.openOutputStream(uri).use { stream ->
-                if (stream != null) {
-                    body(stream)
-                }
-            }
+            val stream = contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("openOutputStream returned null for $uri")
+            stream.use { body(it) }
 
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
         } catch (e: Exception) {
-            contentResolver.delete(uri, null, null)
+            try {
+                contentResolver.delete(uri, null, null)
+            } catch (deleteEx: Exception) {
+                e.addSuppressed(deleteEx)
+            }
             throw e
         }
 
