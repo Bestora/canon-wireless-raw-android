@@ -26,9 +26,10 @@ class MetaCache(private val dir: File) {
     fun put(handle: Int, size: Long, rating: Int?, thumb: ByteArray?): ImageMeta {
         dir.mkdirs()
 
+        val thumbFile = File(dir, "$handle-$size.jpg")
+
         // Write thumbnail bytes first if provided
         if (thumb != null) {
-            val thumbFile = File(dir, "$handle-$size.jpg")
             thumbFile.writeBytes(thumb)
         }
 
@@ -38,8 +39,7 @@ class MetaCache(private val dir: File) {
         metaFile.writeText(ratingStr)
 
         // Return the resulting ImageMeta
-        val thumbFile = if (thumb != null) File(dir, "$handle-$size.jpg") else null
-        return ImageMeta(rating, thumbFile)
+        return ImageMeta(rating, if (thumb != null) thumbFile else null)
     }
 
     fun clear() {

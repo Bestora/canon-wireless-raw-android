@@ -1,6 +1,7 @@
 package io.github.canonwirelessraw.data
 
 import java.io.File
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -31,6 +32,7 @@ class MetaCacheTest {
         assertEquals(rating, retrieved?.rating)
         assertTrue(retrieved?.thumbFile != null)
         assertTrue(retrieved!!.thumbFile!!.exists())
+        assertArrayEquals(thumbBytes, retrieved.thumbFile!!.readBytes())
     }
 
     @Test
@@ -67,5 +69,22 @@ class MetaCacheTest {
         cache.clear()
 
         assertTrue(tempFolder.root.listFiles()?.isEmpty() == true)
+    }
+
+    @Test
+    fun `lazy mkdirs creates non-existent subdirectories`() {
+        val cacheDir = File(tempFolder.root, "sub/cache")
+        val cache = MetaCache(cacheDir)
+
+        assertTrue(!cacheDir.exists())
+
+        val result = cache.put(1, 100L, 3, byteArrayOf(10, 20))
+
+        assertTrue(cacheDir.exists())
+        assertEquals(3, result.rating)
+
+        val retrieved = cache.get(1, 100L)
+        assertEquals(3, retrieved?.rating)
+        assertArrayEquals(byteArrayOf(10, 20), retrieved?.thumbFile!!.readBytes())
     }
 }
