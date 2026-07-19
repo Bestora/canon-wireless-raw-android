@@ -47,6 +47,9 @@ interface PtpPort {
 
 class PtpException(val step: String, val code: Int) : Exception("$step failed: $code")
 
+/** Result of [PtpClient.eosMode]: raw return codes (0 = OK) for each step, so callers can log/inspect both. */
+data class EosModeResult(val remoteModeCode: Int, val eventModeCode: Int)
+
 /**
  * Coroutine wrapper around [PtpNative]. All PTP transactions run on [Dispatchers.IO] and are
  * serialized by [mutex] (the underlying PtpRuntime is not safe for concurrent transactions).
@@ -134,6 +137,19 @@ class PtpClient : PtpPort {
                 }
                 if (offset < obj.size) throw PtpException("download", CODE_SHORT)
             }
+        }
+    }
+
+    /**
+     * Debug-only step (Task 9, Milestone-0 verification): sets EOS remote + event mode
+     * individually so a caller can log each step's return code on its own, unlike [connect]'s
+     * `eosMode` flag which only warns. Not on [PtpPort] — the fake/Task 8 doesn't need it.
+     */
+    suspend fun eosMode(): EosModeResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val remoteRc = PtpNative.eosSetRemoteMode(rt, 1)
+            val eventRc = PtpNative.eosSetEventMode(rt, 1)
+            EosModeResult(remoteRc, eventRc)
         }
     }
 
