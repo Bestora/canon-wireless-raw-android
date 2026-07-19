@@ -7,13 +7,22 @@ private const val PREFS_NAME = "prefs"
 private const val KEY_PAIRING_GUID_HEX = "pairing_guid_hex"
 private const val KEY_LAST_IP = "last_ip"
 
+/**
+ * Port implemented by [Prefs]; lets [CameraRepository] depend on an interface instead of the
+ * SharedPreferences-backed class (which needs a Context), so tests can inject a fake.
+ */
+interface PrefsPort {
+    fun pairingGuid(): ByteArray
+    var lastIp: String?
+}
+
 /** SharedPreferences-backed pairing GUID (persisted once, reused across connects) and last-used IP. */
-class Prefs(context: Context) {
+class Prefs(context: Context) : PrefsPort {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** 16-byte pairing GUID; generated once via [UUID.randomUUID] and persisted as hex. */
     @Synchronized
-    fun pairingGuid(): ByteArray {
+    override fun pairingGuid(): ByteArray {
         val existing = prefs.getString(KEY_PAIRING_GUID_HEX, null)
         if (existing != null) return hexToBytes(existing)
 
@@ -26,7 +35,7 @@ class Prefs(context: Context) {
         return bytes
     }
 
-    var lastIp: String?
+    override var lastIp: String?
         get() = prefs.getString(KEY_LAST_IP, null)
         set(value) = prefs.edit().putString(KEY_LAST_IP, value).apply()
 }
