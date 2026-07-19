@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "io.github.canonwirelessraw"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "io.github.canonwirelessraw"

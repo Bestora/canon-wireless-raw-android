@@ -26,9 +26,10 @@ camera's Wi-Fi, and go.
 
 ## Supported cameras
 
-Developed and primarily tested against a **Canon EOS R5**. Any EOS body with the
-same Wi-Fi "Connect to smartphone" feature and standard PTP object-transfer support
-will likely work too — nothing in the app artificially restricts it to the R5.
+Developed for and targeting the **Canon EOS R5** — real-hardware verification is
+pending (see the Milestone 0 protocol). Any EOS body with the same Wi-Fi
+"Connect to smartphone" feature and standard PTP object-transfer support will
+likely work too — nothing in the app artificially restricts it to the R5.
 If you try it on another model, please open an issue with the result (works /
 doesn't work / partially works), especially for the Milestone-0 checklist steps.
 
@@ -61,8 +62,8 @@ default AP address.
 
 Requirements:
 - JDK 17+
-- Android SDK, NDK 27.x, and CMake 3.22 (installable via Android Studio's SDK
-  Manager, or `sdkmanager` directly)
+- Android SDK, NDK 27.2 (pinned in `app/build.gradle.kts`), and CMake 3.22
+  (installable via Android Studio's SDK Manager, or `sdkmanager` directly)
 
 ```bash
 export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"  # or any JDK 17+
