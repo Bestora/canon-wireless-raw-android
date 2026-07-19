@@ -82,6 +82,7 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
     var scanTotal by remember { mutableIntStateOf(0) }
 
     fun refresh() {
+        error = null
         scope.launch {
             runCatching { repo.refreshList() }.onFailure { error = it.message ?: it.toString() }
         }
@@ -93,6 +94,10 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
     val filtered = remember(items, minRating) {
         if (minRating == 0) items else items.filter { it.rating != null && it.rating >= minRating }
     }
+
+    // Derived from the live items list, not just the handle set, so a refreshList that drops/changes
+    // objects can't leave the selection (and the download button's count) pointing at stale items.
+    val selectedItems = remember(items, selected) { items.filter { it.obj.handle in selected } }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -106,6 +111,7 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                     Button(
                         enabled = !scanning,
                         onClick = {
+                            error = null
                             scanning = true
                             scanDone = 0
                             scanTotal = 0
@@ -122,7 +128,12 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                     ) { Text("Ratings scannen") }
                     if (scanning) Text("$scanDone/$scanTotal")
                 }
-                if (scanning) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (scanning) {
+                    LinearProgressIndicator(
+                        progress = { if (scanTotal > 0) scanDone.toFloat() / scanTotal else 0f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp)) }
 
@@ -158,14 +169,14 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                     }
                 }
 
-                if (selected.isNotEmpty()) {
+                if (selectedItems.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Button(onClick = { onDownload(items.filter { it.obj.handle in selected }) }) {
-                            Text("${selected.size} herunterladen")
+                        Button(onClick = { onDownload(selectedItems) }) {
+                            Text("${selectedItems.size} herunterladen")
                         }
                         TextButton(onClick = { selected = emptySet() }) { Text("Auswahl aufheben") }
                     }
