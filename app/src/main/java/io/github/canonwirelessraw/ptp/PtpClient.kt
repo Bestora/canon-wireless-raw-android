@@ -21,6 +21,9 @@ private const val PARENT_ROOT = -1
 /** Cancelled-download sentinel code (see [PtpClient.cancelIo]). */
 private const val CODE_CANCELLED = -99
 
+/** Sentinel code: the loop ended (short/empty read) before the object's full size was written. */
+private const val CODE_SHORT = -98
+
 /**
  * Port implemented by [PtpClient]; declared here so Task 8 (camera repository) can depend on
  * an interface instead of the concrete coroutine wrapper (e.g. for fakes in tests).
@@ -86,7 +89,13 @@ class PtpClient : PtpPort {
             for (storageId in storageIds) {
                 val flat = PtpNative.getObjectHandles(rt, storageId, 0, 0) ?: IntArray(0)
                 if (flat.isNotEmpty()) {
-                    for (handle in flat) addFile(handle = handle, out = result)
+                    // Flat listing already contains every object regardless of parent: a folder
+                    // handle here is just skipped (its children are already in `flat` too), never
+                    // recursed into — that would double-count children.
+                    for (handle in flat) {
+                        val info = PtpNative.getObjectInfo(rt, handle) ?: continue
+                        addFile(handle, info, result)
+                    }
                 } else {
                     // Flat listing unsupported/empty on this device: walk the folder tree instead.
                     walkFolder(storageId, PARENT_ROOT, result)
@@ -117,12 +126,13 @@ class PtpClient : PtpPort {
                             PtpException("getPartialObject", PtpNative.lastError(rt))
                         }
                     sink.write(data)
-                    // Short read before the expected end-of-object: guard against looping forever.
-                    val shortRead = data.size < len && offset + len < obj.size
                     offset += data.size
                     onProgress(offset)
-                    if (shortRead) break
+                    // Short read (incl. empty, non-null chunk) is terminal: re-issuing the same
+                    // request would loop forever while holding the mutex.
+                    if (data.size < len) break
                 }
+                if (offset < obj.size) throw PtpException("download", CODE_SHORT)
             }
         }
     }
@@ -141,9 +151,8 @@ class PtpClient : PtpPort {
         }
     }
 
-    /** Adds [handle]'s object to [out] unless it is a folder (association). */
-    private fun addFile(handle: Int, out: MutableList<CameraObject>) {
-        val info = PtpNative.getObjectInfo(rt, handle) ?: return
+    /** Appends the object described by [info] to [out], unless it is a folder (association). */
+    private fun addFile(handle: Int, info: Array<String>, out: MutableList<CameraObject>) {
         val format = info[3].toIntOrNull() ?: 0
         val assocType = info[5].toIntOrNull() ?: 0
         if (assocType != 0 || format == FORMAT_ASSOCIATION) return
@@ -160,7 +169,7 @@ class PtpClient : PtpPort {
             if (assocType != 0 || format == FORMAT_ASSOCIATION) {
                 walkFolder(storageId, handle, out)
             } else {
-                out += toCameraObject(handle, info, format)
+                addFile(handle, info, out)
             }
         }
     }

@@ -12,6 +12,7 @@ class Prefs(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** 16-byte pairing GUID; generated once via [UUID.randomUUID] and persisted as hex. */
+    @Synchronized
     fun pairingGuid(): ByteArray {
         val existing = prefs.getString(KEY_PAIRING_GUID_HEX, null)
         if (existing != null) return hexToBytes(existing)
