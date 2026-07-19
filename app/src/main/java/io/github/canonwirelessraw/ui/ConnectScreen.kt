@@ -29,6 +29,23 @@ import io.github.canonwirelessraw.ptp.PtpException
 import kotlinx.coroutines.launch
 
 /**
+ * Extra guidance for a connect failure, beyond the raw exception message. `connect` step codes:
+ * -1 = TCP connect failed (wrong IP / phone not on the camera's WLAN — no camera dialog involved),
+ * -2 = init-command-request/pairing-ACK failed (the camera shows a confirm dialog with a short
+ * window to accept it). Returns null when no extra hint applies.
+ */
+fun connectHint(e: Throwable): String? {
+    if (e !is PtpException || e.step != "connect") return null
+    return when (e.code) {
+        -2 -> "Bestätige die Verbindung an der Kamera und versuche es sofort erneut " +
+            "(Zeitfenster nur wenige Sekunden)."
+        -1 -> "Kamera nicht erreichbar — IP prüfen und sicherstellen, dass das Handy mit dem " +
+            "WLAN der Kamera verbunden ist."
+        else -> null
+    }
+}
+
+/**
  * First screen shown on app start: enter the camera's WLAN IP and connect. Task 12 wires this in
  * (currently unreferenced by MainActivity, which still renders DebugScreen directly).
  */
@@ -39,19 +56,19 @@ fun ConnectScreen(container: AppContainer, onConnected: () -> Unit, onDebug: () 
     var ip by remember { mutableStateOf(container.prefs.lastIp ?: "192.168.1.2") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var retryHint by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
 
     fun connect() {
         if (busy) return
         busy = true
         error = null
-        retryHint = false
+        hint = null
         scope.launch {
             runCatching { container.repo.connect(ip) }
                 .onSuccess { onConnected() }
                 .onFailure { e ->
                     error = e.message ?: e.toString()
-                    retryHint = e is PtpException && e.step == "connect" && e.code == -1
+                    hint = connectHint(e)
                 }
             busy = false
         }
@@ -94,13 +111,7 @@ fun ConnectScreen(container: AppContainer, onConnected: () -> Unit, onDebug: () 
                 error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error)
-                    if (retryHint) {
-                        Text(
-                            "Bestätige die Verbindung an der Kamera und versuche es sofort erneut " +
-                                "(Zeitfenster nur wenige Sekunden).",
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                    hint?.let { h -> Text(h, color = MaterialTheme.colorScheme.error) }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
