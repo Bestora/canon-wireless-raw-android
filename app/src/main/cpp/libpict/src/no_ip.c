@@ -1,0 +1,36 @@
+// Include this if you wish to never use TCP/IP
+// Copyright 2022 by Daniel C (https://github.com/petabyt/libpict)
+#include <libpict.h>
+#include <ptp.h>
+
+int ptpip_new_timeout_socket(char *addr, int port) {
+	return -1;	
+}
+
+int ptpip_connect(struct PtpRuntime *r, const char *addr, int port, int extra_tmout) {
+	return -1;
+}
+
+int ptpip_connect_events(struct PtpRuntime *r, const char *addr, int port) {
+	return -1;
+}
+
+int ptpip_device_close(struct PtpRuntime *r) {
+	return -1;
+}
+
+int ptpip_cmd_write(struct PtpRuntime *r, void *data, unsigned int size) {
+	return -1;
+}
+
+int ptpip_cmd_read(struct PtpRuntime *r, void *data, unsigned int size) {
+	return -1;
+}
+
+int ptpip_event_send(struct PtpRuntime *r, void *data, unsigned int size) {
+	return -1;
+}
+
+int ptpip_event_read(struct PtpRuntime *r, void *data, unsigned int size) {
+	return -1;
+}
