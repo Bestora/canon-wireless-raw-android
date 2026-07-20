@@ -50,13 +50,19 @@ fun connectHint(e: Throwable): String? {
  * (currently unreferenced by MainActivity, which still renders DebugScreen directly).
  */
 @Composable
-fun ConnectScreen(container: AppContainer, onConnected: () -> Unit, onDebug: () -> Unit) {
+fun ConnectScreen(
+    container: AppContainer,
+    onConnected: () -> Unit,
+    onDebug: () -> Unit,
+    onCredentials: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
 
     var ip by remember { mutableStateOf(container.prefs.lastIp ?: "192.168.1.2") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
+    val autoCreds = container.prefs.cameraCredentials()
 
     fun connect() {
         if (busy) return
@@ -74,6 +80,29 @@ fun ConnectScreen(container: AppContainer, onConnected: () -> Unit, onDebug: () 
         }
     }
 
+    fun autoConnect() {
+        if (busy) return
+        val creds = container.prefs.cameraCredentials() ?: return
+        busy = true
+        error = null
+        hint = null
+        scope.launch {
+            runCatching {
+                container.wifi.connectToCamera(creds)
+                container.repo.connect(ip)
+            }.onSuccess { onConnected() }
+                .onFailure { e ->
+                    // Covers BOTH failure sub-paths (WiFi join itself, or PTP connect after a
+                    // successful join): either way the process must not stay bound to a
+                    // no-internet camera network.
+                    container.wifi.release()
+                    error = e.message ?: e.toString()
+                    hint = connectHint(e)
+                }
+            busy = false
+        }
+    }
+
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -83,6 +112,25 @@ fun ConnectScreen(container: AppContainer, onConnected: () -> Unit, onDebug: () 
                 Text("1. Kamera: Menü → WLAN → „Mit Smartphone verbinden\"")
                 Text("2. S25 mit dem Kamera-WLAN verbinden")
                 Text("3. IP unten bestätigen")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (autoCreds != null) {
+                    Button(
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { autoConnect() },
+                    ) {
+                        if (busy) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            Text("Automatisch verbinden (WLAN + Kamera)")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                TextButton(onClick = onCredentials) {
+                    Text("WLAN-Zugangsdaten…")
+                }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedTextField(

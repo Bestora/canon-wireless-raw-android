@@ -5,6 +5,7 @@ import io.github.canonwirelessraw.data.CameraRepository
 import io.github.canonwirelessraw.data.MetaCache
 import io.github.canonwirelessraw.data.Prefs
 import io.github.canonwirelessraw.ptp.PtpClient
+import io.github.canonwirelessraw.wifi.WifiConnector
 import java.io.File
 
 /**
@@ -20,6 +21,8 @@ object AppContainer {
         private set
     lateinit var repo: CameraRepository
         private set
+    lateinit var wifi: WifiConnector
+        private set
 
     /** Idempotent: a second call (e.g. Activity re-creation) is a no-op. */
     fun init(context: Context) {
@@ -29,5 +32,6 @@ object AppContainer {
         ptp = PtpClient()
         cache = MetaCache(File(appContext.cacheDir, "meta"))
         repo = CameraRepository(ptp, cache, prefs)
+        wifi = WifiConnector(appContext)
     }
 }

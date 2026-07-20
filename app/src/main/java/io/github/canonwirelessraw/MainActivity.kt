@@ -12,6 +12,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.github.canonwirelessraw.data.GalleryItem
 import io.github.canonwirelessraw.ui.ConnectScreen
+import io.github.canonwirelessraw.ui.CredentialsScreen
 import io.github.canonwirelessraw.ui.DebugScreen
 import io.github.canonwirelessraw.ui.DownloadScreen
 import io.github.canonwirelessraw.ui.GalleryScreen
@@ -25,9 +26,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Four screens, plain state — no nav-lib needed for a flow this small. */
+/** Five screens, plain state — no nav-lib needed for a flow this small. */
 sealed interface Screen {
     data object Connect : Screen
+    data object Credentials : Screen
     data object Gallery : Screen
     data class Download(val items: List<GalleryItem>) : Screen
     data object Debug : Screen
@@ -39,8 +41,10 @@ fun App() {
     val scope = rememberCoroutineScope()
 
     BackHandler(enabled = screen is Screen.Debug) { screen = Screen.Connect }
+    BackHandler(enabled = screen is Screen.Credentials) { screen = Screen.Connect }
     BackHandler(enabled = screen is Screen.Gallery) {
         scope.launch { runCatching { AppContainer.repo.disconnect() } }
+        AppContainer.wifi.release()
         screen = Screen.Connect
     }
 
@@ -49,6 +53,12 @@ fun App() {
             AppContainer,
             onConnected = { screen = Screen.Gallery },
             onDebug = { screen = Screen.Debug },
+            onCredentials = { screen = Screen.Credentials },
+        )
+        Screen.Credentials -> CredentialsScreen(
+            AppContainer,
+            onSaved = { screen = Screen.Connect },
+            onBack = { screen = Screen.Connect },
         )
         Screen.Gallery -> GalleryScreen(AppContainer) { items -> screen = Screen.Download(items) }
         is Screen.Download -> DownloadScreen(
@@ -58,6 +68,7 @@ fun App() {
             // Cancelled batch left the session dead: drop it and route back to reconnect.
             onSessionDead = {
                 scope.launch { runCatching { AppContainer.repo.disconnect() } }
+                AppContainer.wifi.release()
                 screen = Screen.Connect
             },
         )
