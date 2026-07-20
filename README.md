@@ -43,6 +43,23 @@ doesn't work / partially works), especially for the Milestone-0 checklist steps.
 - **CR3 / JPEG / HEIF download** — full-resolution originals, not just previews
 - **Share sheet** — after download, hand files off to Lightroom, Luminar, or any
   other app that accepts images via `ACTION_SEND_MULTIPLE`
+- **Optional auto Wi-Fi join** — enter the camera's SSID/password once (shown
+  on the R5 display under "Connect to smartphone") in the Credentials screen;
+  the connect screen then offers a one-tap **"Automatisch verbinden (WLAN +
+  Kamera)"** button that joins the camera's Wi-Fi itself
+  (`WifiNetworkSpecifier` + `bindProcessToNetwork`) and connects over PTP/IP,
+  no manual trip to Android's Wi-Fi settings required
+- **Experimental BLE-Wake (unverified)** — the debug screen's **"BLE: Kamera
+  suchen"** / **"BLE: Pairing + Wake"** buttons look for a camera already
+  paired over Bluetooth and attempt to nudge its Wi-Fi radio on with a
+  `MODE_WAKE` write. This **requires a one-time Bluetooth pairing done in the
+  camera's own menu first** (Menu → Wi-Fi settings → "Connect to smartphone" →
+  "Add a device" → pair via Bluetooth — Canon mandates this, the app cannot pair
+  over BLE without it). Whether the wake write actually turns on the camera's
+  Wi-Fi is **not confirmed against real hardware** — treat it as best-effort, not a
+  guaranteed remote-wake feature. See
+  [`docs/MILESTONE-0-PROTOKOLL.md`](docs/MILESTONE-0-PROTOKOLL.md)'s
+  "BLE-Wake & Auto-WiFi" section for the open question and how to check it.
 
 ## Connecting
 
@@ -57,6 +74,16 @@ doesn't work / partially works), especially for the Milestone-0 checklist steps.
 A shared home Wi-Fi network also works: put the camera and phone on the same
 network and enter the camera's IP on that network manually instead of the
 default AP address.
+
+## Permissions
+
+| Permission | Why |
+|---|---|
+| `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE` | Core PTP/IP connection to the camera over Wi-Fi. |
+| `CHANGE_NETWORK_STATE` | Auto Wi-Fi join: requesting and binding the process to the camera's network via `WifiNetworkSpecifier`/`ConnectivityManager`. |
+| `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` (Android 12 / API 31+, runtime-granted) | Experimental BLE-Wake: scanning for and connecting to a pre-paired camera over Bluetooth LE. |
+| `BLUETOOTH`, `BLUETOOTH_ADMIN` (capped at API 30) | Same BLE-Wake flow on Android 11 and below, where Bluetooth access is still an install-time permission instead of the two above. |
+| `ACCESS_FINE_LOCATION` (capped at API 30) | Legacy OS requirement for BLE scanning on Android 11 and below — dropped by `BLUETOOTH_SCAN` on API 31+, which uses `neverForLocation`. |
 
 ## Building
 

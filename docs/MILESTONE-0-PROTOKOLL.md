@@ -52,3 +52,47 @@ Korrektur an den bestehenden 13 Tasks — siehe „Risiko & Milestone 0" in
 
 _(Nach Durchlauf ausfüllen: Datum, Kamera-Firmware, alle 6 Schritte ✅, oder
 welcher Schritt fehlschlug und mit welchem Fehlercode.)_
+
+## BLE-Wake & Auto-WiFi (experimentell)
+
+Zusatzfunktionen aus Phase 2, unabhängig von der PTP/IP-Kernverifikation oben.
+Teil A (Auto-WiFi-Join) ist eigenständig nutzbar, sobald WLAN-Zugangsdaten
+gespeichert sind. Teil B (BLE-Wake) ist **unverifiziert**: ob der
+`MODE_WAKE=0x03`-Schreibzugriff über Bluetooth die R5 tatsächlich in den
+„Mit Smartphone verbinden"-WLAN-Modus versetzt, ist offen — kein bekanntes
+Drittanbieter-Projekt hat das nachgebaut, der Rückgabewert bestätigt nur, dass
+der GATT-Write erfolgreich war, nicht dass das WLAN hochkam. Schritt (c) unten
+ist die einzige Verifikation, die diese Frage beantwortet.
+
+### Voraussetzung: einmaliges BLE-Pairing im Kameramenü
+
+Canon verlangt für BLE-Zugriff ein manuelles Erstpairing, das die App nicht
+umgehen kann: an der R5 **Menü → WLAN-Einstellungen → „Mit Smartphone
+verbinden" → „Gerät hinzufügen" → über Bluetooth koppeln** ausführen, bevor
+Schritt (b) unten funktionieren kann.
+
+### Checkliste
+
+| # | Schritt | Button (App) | Was tun | Erwartung | Ergebnis |
+|---|---|---|---|---|---|
+| a | Kamera koppeln | *(kein Button — an der Kamera)* | Menü → „Mit Smartphone verbinden" → „Gerät hinzufügen" → über Bluetooth koppeln. | Kamera zeigt das Handy als gekoppeltes Gerät. | ☐ |
+| b | BLE-Scan | Debug-Screen: **„BLE: Kamera suchen"** | Antippen (fragt beim ersten Mal Bluetooth-Berechtigungen an — erteilen, danach erneut tippen). | Log zeigt `Gefunden: <Name> (<Adresse>)`. Bleibt das aus, war a) nicht erfolgreich. | ☐ |
+| c | **Kernfrage:** Pairing + Wake | Debug-Screen: **„BLE: Pairing + Wake"** | Erst nach erfolgreichem b) antippen. | Log zeigt `WakeResult: …` (siehe Werte unten). Bei `PAIRED_WAKE_SENT`: **am Handy die WLAN-Liste prüfen — erscheint jetzt das Kamera-WLAN, ohne dass am Kamera-Display manuell „Mit Smartphone verbinden" gestartet wurde?** Das — und nur das — beantwortet, ob `MODE_WAKE=0x03` den Wake tatsächlich auslöst. | ☐ |
+| d | Auto-WiFi-Join | ConnectScreen: „WLAN-Zugangsdaten…" → SSID/Passwort → „Speichern"; danach **„Automatisch verbinden (WLAN + Kamera)"** | SSID/Passwort so eintragen, wie sie die R5 im Display unter „Mit Smartphone verbinden" zeigt, speichern, zurück zum ConnectScreen, Button antippen. | App verbindet sich selbst mit dem Kamera-WLAN (`WifiNetworkSpecifier` + `bindProcessToNetwork`) und danach per PTP/IP — kein manueller Wechsel in die Android-WLAN-Einstellungen nötig. | ☐ |
+
+**WakeResult-Werte** (aus `BleWaker.kt`): `PAIRED_WAKE_SENT` (Pairing- und
+`MODE_WAKE`-Writes erfolgreich abgesetzt — bestätigt nur den Schreibzugriff,
+nicht dass das WLAN hochkam), `NEEDS_CONFIRMATION` (kein Accept/Reject-Notify
+innerhalb 60 s — vermutlich ist eine Bestätigung am Kamera-Display nötig),
+`REJECTED` (Kamera hat das Pairing abgelehnt), `FAILED` (Bluetooth aus,
+fehlende Berechtigung, Verbindungsabbruch oder fehlgeschlagener GATT-Schritt).
+
+**Ergebnis-Spalte:** wie oben — ☐ offen, ✅ wie erwartet, ❌ Fehlschlag
+(Ergebnis/Fehlermeldung notieren; bei c) insbesondere festhalten, ob das
+Kamera-WLAN nach `PAIRED_WAKE_SENT` erschienen ist oder nicht).
+
+### Ergebnis dieses Abschnitts
+
+_(Nach Durchlauf ausfüllen: Datum, ob a) und b) erfolgreich waren, welcher
+WakeResult bei c) auftrat und ob das Kamera-WLAN danach ohne manuellen Eingriff
+an der Kamera erschien, ob d) WLAN + Kamera erfolgreich verbunden hat.)_

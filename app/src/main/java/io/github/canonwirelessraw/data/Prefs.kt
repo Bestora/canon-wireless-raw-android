@@ -6,6 +6,8 @@ import java.util.UUID
 private const val PREFS_NAME = "prefs"
 private const val KEY_PAIRING_GUID_HEX = "pairing_guid_hex"
 private const val KEY_LAST_IP = "last_ip"
+private const val KEY_CAMERA_SSID = "camera_ssid"
+private const val KEY_CAMERA_PSK = "camera_psk"
 
 /**
  * Port implemented by [Prefs]; lets [CameraRepository] depend on an interface instead of the
@@ -38,6 +40,19 @@ class Prefs(context: Context) : PrefsPort {
     override var lastIp: String?
         get() = prefs.getString(KEY_LAST_IP, null)
         set(value) = prefs.edit().putString(KEY_LAST_IP, value).apply()
+
+    var cameraSsid: String?
+        get() = prefs.getString(KEY_CAMERA_SSID, null)
+        set(v) = prefs.edit().putString(KEY_CAMERA_SSID, v).apply()
+
+    var cameraPsk: String?
+        get() = prefs.getString(KEY_CAMERA_PSK, null)
+        set(v) = prefs.edit().putString(KEY_CAMERA_PSK, v).apply()
+
+    fun cameraCredentials(): WifiCredentials? {
+        val s = cameraSsid; val p = cameraPsk
+        return if (!s.isNullOrBlank() && !p.isNullOrBlank()) WifiCredentials(s, p) else null
+    }
 }
 
 private fun bytesToHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
