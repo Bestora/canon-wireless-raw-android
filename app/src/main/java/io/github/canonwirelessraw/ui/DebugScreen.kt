@@ -1,5 +1,9 @@
 package io.github.canonwirelessraw.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +32,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.canonwirelessraw.AppContainer
+import io.github.canonwirelessraw.ble.BleDevice
+import io.github.canonwirelessraw.ble.WakeResult
 import io.github.canonwirelessraw.cr3.ImageHeaderParser
 import io.github.canonwirelessraw.ptp.FileKind
 import java.text.SimpleDateFormat
@@ -50,6 +56,7 @@ fun DebugScreen(container: AppContainer) {
 
     var ip by remember { mutableStateOf(container.prefs.lastIp ?: "192.168.1.2") }
     var busy by remember { mutableStateOf(false) }
+    var foundBleDevice by remember { mutableStateOf<BleDevice?>(null) }
 
     val logLines = remember { mutableStateListOf<String>() }
     val listState = rememberLazyListState()
@@ -59,6 +66,12 @@ fun DebugScreen(container: AppContainer) {
     fun log(msg: String) {
         logLines.add("${timeFmt.format(Date())} $msg")
     }
+
+    val blePermissions = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+    fun hasBlePermissions() =
+        blePermissions.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    val blePermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Ergebnis über hasBlePermissions() beim nächsten Tap geprüft */ }
 
     // ponytail: one busy flag guards all six buttons — good enough for a single-user debug
     // screen; a per-button flag would just be more state for the same guarantee.
@@ -181,6 +194,55 @@ fun DebugScreen(container: AppContainer) {
                         }
                     },
                 ) { Text("Disconnect") }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        runStep {
+                            if (!hasBlePermissions()) {
+                                blePermissionLauncher.launch(blePermissions)
+                                log("Berechtigung angefragt — erneut tippen")
+                                return@runStep
+                            }
+                            log("BLE-Scan: suche Kamera...")
+                            val device = container.ble.scanForCamera()
+                            foundBleDevice = device
+                            if (device != null) {
+                                log("Gefunden: ${device.name} (${device.address})")
+                            } else {
+                                log("nichts gefunden (im Kameramenü koppeln!)")
+                            }
+                        }
+                    },
+                ) { Text("BLE: Kamera suchen") }
+
+                Button(
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        runStep {
+                            if (!hasBlePermissions()) {
+                                blePermissionLauncher.launch(blePermissions)
+                                log("Berechtigung angefragt — erneut tippen")
+                                return@runStep
+                            }
+                            val device = foundBleDevice ?: run { log("erst suchen"); return@runStep }
+                            log("Pairing + Wake: ${device.name} (${device.address})")
+                            val result = container.ble.pairAndWake(device)
+                            log("WakeResult: $result")
+                            when (result) {
+                                WakeResult.NEEDS_CONFIRMATION ->
+                                    log("am Kamera-Display bestätigen")
+                                WakeResult.PAIRED_WAKE_SENT ->
+                                    log("Wake gesendet — prüfe, ob das Kamera-WLAN jetzt erscheint (NICHT garantiert)")
+                                else -> {}
+                            }
+                        }
+                    },
+                ) { Text("BLE: Pairing + Wake") }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Log", style = MaterialTheme.typography.titleSmall)

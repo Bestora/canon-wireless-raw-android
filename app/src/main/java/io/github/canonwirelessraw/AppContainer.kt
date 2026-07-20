@@ -1,6 +1,7 @@
 package io.github.canonwirelessraw
 
 import android.content.Context
+import io.github.canonwirelessraw.ble.BleWaker
 import io.github.canonwirelessraw.data.CameraRepository
 import io.github.canonwirelessraw.data.MetaCache
 import io.github.canonwirelessraw.data.Prefs
@@ -23,6 +24,8 @@ object AppContainer {
         private set
     lateinit var wifi: WifiConnector
         private set
+    lateinit var ble: BleWaker
+        private set
 
     /** Idempotent: a second call (e.g. Activity re-creation) is a no-op. */
     fun init(context: Context) {
@@ -33,5 +36,6 @@ object AppContainer {
         cache = MetaCache(File(appContext.cacheDir, "meta"))
         repo = CameraRepository(ptp, cache, prefs)
         wifi = WifiConnector(appContext)
+        ble = BleWaker(appContext)
     }
 }
