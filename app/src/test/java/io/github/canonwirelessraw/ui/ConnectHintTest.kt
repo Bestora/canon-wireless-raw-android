@@ -11,8 +11,8 @@ class ConnectHintTest {
     fun `pairing ack failure (-2) shows camera confirm hint`() {
         val hint = connectHint(PtpException("connect", -2))
         assertEquals(
-            "Bestätige die Verbindung an der Kamera und versuche es sofort erneut " +
-                "(Zeitfenster nur wenige Sekunden).",
+            "Confirm the connection on the camera and try again immediately " +
+                "(the time window is only a few seconds).",
             hint,
         )
     }
@@ -21,8 +21,8 @@ class ConnectHintTest {
     fun `tcp connect failure (-1) shows network hint`() {
         val hint = connectHint(PtpException("connect", -1))
         assertEquals(
-            "Kamera nicht erreichbar — IP prüfen und sicherstellen, dass das Handy mit dem " +
-                "WLAN der Kamera verbunden ist.",
+            "Camera not reachable — check the IP and make sure your phone is connected to " +
+                "the camera's Wi-Fi.",
             hint,
         )
     }

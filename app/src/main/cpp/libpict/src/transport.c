@@ -17,7 +17,12 @@ int ptp_send_packet(struct PtpRuntime *r, unsigned int length) {
 		int rc;
 		if (r->connection_type == PTP_USB) {
 			rc = ptp_cmd_write(r, r->data + sent, max);
-		} else if (r->connection_type == PTP_IP_USB) {
+		} else if (r->connection_type == PTP_IP_USB || r->connection_type == PTP_IP) {
+			// LOCAL PATCH (canon-wireless-raw): upstream libpict forgot the plain
+			// PTP_IP case here and would ptp_panic()->abort() the whole app on the
+			// first ptp_open_session over Wi-Fi. Byte transport is identical to
+			// PTP_IP_USB (both go through ptpip_cmd_write); only the packet framing
+			// differs, which packet.c already handles by connection_type. See PATCHES.md.
 			rc = ptpip_cmd_write(r, r->data + sent, max);
 		} else {
 			ptp_panic("illegal connection_type");

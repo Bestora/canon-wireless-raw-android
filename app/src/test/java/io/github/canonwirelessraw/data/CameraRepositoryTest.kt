@@ -44,19 +44,30 @@ class CameraRepositoryTest {
     private fun xmpUuidBox(xml: String): ByteArray =
         bmffBox("uuid", hexToBytes(XMP_GUID_HEX) + xml.toByteArray(Charsets.ISO_8859_1))
 
+    private fun uuidBox(guidHex: String, payload: ByteArray): ByteArray =
+        bmffBox("uuid", hexToBytes(guidHex) + payload)
+
+    private fun u16(v: Int) = byteArrayOf((v ushr 8).toByte(), v.toByte())
+    private fun u32(v: Int) = byteArrayOf((v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte())
+
+    /** THMB box: version(4) w(2) h(2) jpegSize(4) pad(2) + jpeg */
+    private fun thmbBox(jpeg: ByteArray): ByteArray =
+        bmffBox("THMB", u32(0) + u16(160) + u16(120) + u32(jpeg.size) + u16(1) + jpeg)
+
     // ---- test fixtures ----
 
     private val previewJpeg = byteArrayOf(
-        0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+        0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xDB.toByte(),
         0x01, 0x02, 0x03, 0x04,
         0xFF.toByte(), 0xD9.toByte(),
     )
 
-    /** CR3-like BMFF: ftyp + xmp uuid (rating 3) + an embedded preview JPEG. */
+    /** CR3-like BMFF: ftyp + moov[ canon-uuid[ THMB(thumbnail) ] ] + xmp uuid (rating 3).
+     *  Thumbnail now comes from the THMB box (Cr3Container), rating from the XMP uuid. */
     private val cr3Header =
         bmffBox("ftyp", byteArrayOf(0, 0, 0, 0)) +
-            xmpUuidBox("""<x:xmpmeta xmp:Rating="3"></x:xmpmeta>""") +
-            previewJpeg
+            bmffBox("moov", uuidBox("85C0B687820F11E08111F4CE462B6A48", thmbBox(previewJpeg))) +
+            xmpUuidBox("""<x:xmpmeta xmp:Rating="3"></x:xmpmeta>""")
 
     /** JPEG SOI + APP0 only: no rating tag, no EOI → parser yields null rating and null thumb. */
     private val jpegHeader = byteArrayOf(
@@ -83,6 +94,8 @@ class CameraRepositoryTest {
 
         override suspend fun connect(ip: String, port: Int, name: String, guid: ByteArray, eosMode: Boolean) {}
         override suspend fun listObjects(): List<CameraObject> = objects
+        override suspend fun listHandles(): List<Int> = objects.map { it.handle }
+        override suspend fun objectInfo(handle: Int): CameraObject? = objects.firstOrNull { it.handle == handle }
         override suspend fun readPartial(handle: Int, offset: Long, len: Int): ByteArray {
             readCounts[handle] = (readCounts[handle] ?: 0) + 1
             if (handle in failReadOn) throw RuntimeException("simulated read failure for $handle")
@@ -105,15 +118,16 @@ class CameraRepositoryTest {
         CameraRepository(fake, cache, FakePrefs())
 
     @Test
-    fun `refreshList filters OTHER and sorts by takenAt descending`() = runTest {
+    fun `refreshList filters OTHER and lists handles newest-first (reversed)`() = runTest {
         val r = repo(FakePtpPort(allObjects, headers))
         r.refreshList()
 
         val items = r.items.value
         assertEquals(2, items.size)
         assertTrue(items.none { it.obj.kind == FileKind.OTHER })
-        assertEquals(20, items[0].obj.handle) // JPEG, takenAt 2000 → newest first
-        assertEquals(10, items[1].obj.handle) // CR3, takenAt 1000
+        // handles [10,20,30] reversed = [30,20,10]; mp4(30) filtered out → jpeg(20), cr3(10)
+        assertEquals(20, items[0].obj.handle)
+        assertEquals(10, items[1].obj.handle)
     }
 
     @Test
@@ -163,7 +177,7 @@ class CameraRepositoryTest {
     @Test
     fun `refreshList populates rating and thumb from cache hits immediately`() = runTest {
         val cache = MetaCache(tempFolder.root)
-        cache.put(10, cr3Size, 4, byteArrayOf(9, 9, 9))
+        cache.put(10, cr3Size, 4, 1, byteArrayOf(9, 9, 9))
         val fake = FakePtpPort(allObjects, headers)
         val r = repo(fake, cache)
 

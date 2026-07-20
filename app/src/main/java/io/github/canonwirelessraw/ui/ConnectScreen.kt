@@ -37,10 +37,10 @@ import kotlinx.coroutines.launch
 fun connectHint(e: Throwable): String? {
     if (e !is PtpException || e.step != "connect") return null
     return when (e.code) {
-        -2 -> "Bestätige die Verbindung an der Kamera und versuche es sofort erneut " +
-            "(Zeitfenster nur wenige Sekunden)."
-        -1 -> "Kamera nicht erreichbar — IP prüfen und sicherstellen, dass das Handy mit dem " +
-            "WLAN der Kamera verbunden ist."
+        -2 -> "Confirm the connection on the camera and try again immediately " +
+            "(the time window is only a few seconds)."
+        -1 -> "Camera not reachable — check the IP and make sure your phone is connected to " +
+            "the camera's Wi-Fi."
         else -> null
     }
 }
@@ -106,12 +106,12 @@ fun ConnectScreen(
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Text("Mit Kamera verbinden", style = MaterialTheme.typography.headlineSmall)
+                Text("Connect to camera", style = MaterialTheme.typography.headlineSmall)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("1. Kamera: Menü → WLAN → „Mit Smartphone verbinden\"")
-                Text("2. S25 mit dem Kamera-WLAN verbinden")
-                Text("3. IP unten bestätigen")
+                Text("1. Camera: Menu → Remote control (EOS Utility) → Add a device")
+                Text("2. Join the camera's Wi-Fi on your phone")
+                Text("3. Confirm the IP below, then accept the prompt on the camera")
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (autoCreds != null) {
@@ -123,20 +123,20 @@ fun ConnectScreen(
                         if (busy) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
                         } else {
-                            Text("Automatisch verbinden (WLAN + Kamera)")
+                            Text("Auto-connect (Wi-Fi + camera)")
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 TextButton(onClick = onCredentials) {
-                    Text("WLAN-Zugangsdaten…")
+                    Text("Wi-Fi credentials…")
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedTextField(
                     value = ip,
                     onValueChange = { ip = it },
-                    label = { Text("Kamera-IP") },
+                    label = { Text("Camera IP") },
                     enabled = !busy,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -152,7 +152,7 @@ fun ConnectScreen(
                     if (busy) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp))
                     } else {
-                        Text("Verbinden")
+                        Text("Connect")
                     }
                 }
 

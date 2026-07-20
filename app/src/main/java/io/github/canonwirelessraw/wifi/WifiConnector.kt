@@ -46,7 +46,7 @@ class WifiConnector(private val context: Context) {
                         }
                         override fun onUnavailable() {
                             if (cont.isActive) cont.resumeWithException(
-                                WifiJoinException("Kamera-WLAN nicht verfügbar (Dialog abgebrochen oder falsches Passwort?)"))
+                                WifiJoinException("Camera Wi-Fi not available (dialog dismissed or wrong password?)"))
                         }
                     }
                     callback = cb
@@ -60,7 +60,7 @@ class WifiConnector(private val context: Context) {
             release()
             throw e
         }
-        if (ok != true) { release(); throw WifiJoinException("Zeitüberschreitung beim Verbinden mit dem Kamera-WLAN") }
+        if (ok != true) { release(); throw WifiJoinException("Timed out connecting to the camera's Wi-Fi") }
         // ok == true ist nur erreichbar, wenn resume(true) die Coroutine tatsächlich fortgesetzt hat --
         // bei einer Race mit dem Timeout hätte die Cancellation gewonnen und ok wäre null (Zweig oben).
         // Binden also erst hier, mit dem Ergebnis bereits feststehend: kein Fenster mehr, in dem

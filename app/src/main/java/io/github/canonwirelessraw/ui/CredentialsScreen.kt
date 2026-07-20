@@ -51,9 +51,9 @@ fun CredentialsScreen(container: AppContainer, onSaved: () -> Unit, onBack: () -
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Text("WLAN-Zugangsdaten", style = MaterialTheme.typography.headlineSmall)
+                Text("Wi-Fi credentials", style = MaterialTheme.typography.headlineSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("SSID und Passwort zeigt die R5 im Display unter „Mit Smartphone verbinden“.")
+                Text("The camera shows its Wi-Fi SSID and password when you add a device under Remote control (EOS Utility).")
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedTextField(
@@ -68,7 +68,7 @@ fun CredentialsScreen(container: AppContainer, onSaved: () -> Unit, onBack: () -
                 OutlinedTextField(
                     value = psk,
                     onValueChange = { psk = it },
-                    label = { Text("Passwort") },
+                    label = { Text("Password") },
                     singleLine = true,
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -86,11 +86,11 @@ fun CredentialsScreen(container: AppContainer, onSaved: () -> Unit, onBack: () -
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { save() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Speichern")
+                    Text("Save")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onBack) {
-                    Text("Zurück")
+                    Text("Back")
                 }
             }
         }

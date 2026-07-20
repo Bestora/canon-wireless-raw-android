@@ -11,6 +11,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -20,6 +23,7 @@ import io.github.canonwirelessraw.ui.CredentialsScreen
 import io.github.canonwirelessraw.ui.DebugScreen
 import io.github.canonwirelessraw.ui.DownloadScreen
 import io.github.canonwirelessraw.ui.GalleryScreen
+import io.github.canonwirelessraw.ui.ImageViewerScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -30,11 +34,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Five screens, plain state — no nav-lib needed for a flow this small. */
+/** Plain state screens — no nav-lib needed for a flow this small. */
 sealed interface Screen {
     data object Connect : Screen
     data object Credentials : Screen
     data object Gallery : Screen
+    data class Viewer(val item: GalleryItem) : Screen
     data class Download(val items: List<GalleryItem>) : Screen
     data object Debug : Screen
 }
@@ -64,6 +69,8 @@ fun App() {
         AppContainer.wifi.release()
         screen = Screen.Connect
     }
+    // Viewer is an overlay over the gallery: back just returns, session stays alive.
+    BackHandler(enabled = screen is Screen.Viewer) { screen = Screen.Gallery }
 
     when (val s = screen) {
         Screen.Connect -> ConnectScreen(
@@ -77,7 +84,19 @@ fun App() {
             onSaved = { screen = Screen.Connect },
             onBack = { screen = Screen.Connect },
         )
-        Screen.Gallery -> GalleryScreen(AppContainer) { items -> screen = Screen.Download(items) }
+        // Gallery and Viewer share one branch: the gallery stays composed underneath while the
+        // viewer overlays it, so scroll position, rating filter and selection all survive the
+        // trip into the viewer and back (they live in GalleryScreen's own remembered state).
+        Screen.Gallery, is Screen.Viewer -> Box(Modifier.fillMaxSize()) {
+            GalleryScreen(
+                AppContainer,
+                onOpen = { item -> screen = Screen.Viewer(item) },
+                onDownload = { items -> screen = Screen.Download(items) },
+            )
+            (screen as? Screen.Viewer)?.let { v ->
+                ImageViewerScreen(AppContainer, v.item, onBack = { screen = Screen.Gallery })
+            }
+        }
         is Screen.Download -> DownloadScreen(
             AppContainer,
             s.items,
