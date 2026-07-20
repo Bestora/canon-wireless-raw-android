@@ -16,9 +16,6 @@ private const val KEY_CAMERA_PSK = "camera_psk"
 interface PrefsPort {
     fun pairingGuid(): ByteArray
     var lastIp: String?
-    var cameraSsid: String?
-    var cameraPsk: String?
-    fun cameraCredentials(): WifiCredentials?
 }
 
 /** SharedPreferences-backed pairing GUID (persisted once, reused across connects) and last-used IP. */
@@ -44,15 +41,15 @@ class Prefs(context: Context) : PrefsPort {
         get() = prefs.getString(KEY_LAST_IP, null)
         set(value) = prefs.edit().putString(KEY_LAST_IP, value).apply()
 
-    override var cameraSsid: String?
+    var cameraSsid: String?
         get() = prefs.getString(KEY_CAMERA_SSID, null)
         set(v) = prefs.edit().putString(KEY_CAMERA_SSID, v).apply()
 
-    override var cameraPsk: String?
+    var cameraPsk: String?
         get() = prefs.getString(KEY_CAMERA_PSK, null)
         set(v) = prefs.edit().putString(KEY_CAMERA_PSK, v).apply()
 
-    override fun cameraCredentials(): WifiCredentials? {
+    fun cameraCredentials(): WifiCredentials? {
         val s = cameraSsid; val p = cameraPsk
         return if (!s.isNullOrBlank() && !p.isNullOrBlank()) WifiCredentials(s, p) else null
     }
