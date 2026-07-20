@@ -98,7 +98,13 @@ class CameraRepositoryTest {
 
     private class FakePrefs : PrefsPort {
         override var lastIp: String? = null
+        override var cameraSsid: String? = null
+        override var cameraPsk: String? = null
         override fun pairingGuid(): ByteArray = ByteArray(16)
+        override fun cameraCredentials(): WifiCredentials? {
+            val s = cameraSsid; val p = cameraPsk
+            return if (!s.isNullOrBlank() && !p.isNullOrBlank()) WifiCredentials(s, p) else null
+        }
     }
 
     private fun repo(fake: PtpPort, cache: MetaCache = MetaCache(tempFolder.root)) =
