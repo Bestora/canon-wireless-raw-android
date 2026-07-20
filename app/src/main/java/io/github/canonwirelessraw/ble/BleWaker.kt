@@ -17,14 +17,17 @@ import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import io.github.canonwirelessraw.data.Prefs
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 
 private const val TAG = "BleWaker"
 private const val CONNECT_TIMEOUT_MS = 20_000L
+private const val OP_TIMEOUT_MS = 15_000L
 private const val PAIR_CONFIRM_TIMEOUT_MS = 60_000L
 
 /** Standard Client Characteristic Configuration Descriptor (0x2902) — enables notifications. */
@@ -63,12 +66,15 @@ class BleWaker(private val context: Context) {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private val prefs = Prefs(context)
 
-    private var gatt: BluetoothGatt? = null
+    // @Volatile / AtomicReference: geschrieben auf dem Coroutine-Dispatcher, gelesen/geschrieben auf dem
+    // Binder-Callback-Thread — ohne das keine happens-before-Garantie (stale reads -> Hangs).
+    @Volatile private var gatt: BluetoothGatt? = null
 
     // Genau eine sequentielle GATT-Op ist zu jeder Zeit "in flight" (connect / discover / write / descriptor-write).
-    // Der Callback resumt die hier gehaltene Continuation. Die Accept/Reject-Notify läuft separat über [notify].
-    private var opCont: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
-    private var notify = CompletableDeferred<Byte>()
+    // AtomicReference macht resumeOp single-shot: getAndSet(null) garantiert, dass genau ein Callback resumt
+    // (zwei gleichzeitige Callbacks würden sonst beide resumen -> IllegalStateException auf dem Binder-Thread).
+    private val opCont = AtomicReference<CancellableContinuation<Boolean>?>(null)
+    @Volatile private var notify = CompletableDeferred<Byte>()
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
@@ -104,10 +110,9 @@ class BleWaker(private val context: Context) {
         }
     }
 
+    // Single-shot: getAndSet(null) zieht die Continuation atomar heraus — ein zweiter (Race-)Callback bekommt null.
     private fun resumeOp(success: Boolean) {
-        val c = opCont
-        opCont = null
-        if (c != null && c.isActive) c.resume(success)
+        opCont.getAndSet(null)?.let { if (it.isActive) it.resume(success) }
     }
 
     // ponytail: Accept/Reject aus dem ersten Notify-Byte. Genaues Canon-Frame-Layout am Gerät (Task 6)
@@ -137,7 +142,12 @@ class BleWaker(private val context: Context) {
                         override fun onScanResult(callbackType: Int, result: ScanResult) {
                             val dev = result.device
                             val name = try { dev.name } catch (e: SecurityException) { null }
-                            if (cont.isActive) cont.resume(BleDevice(name ?: "Canon", dev.address))
+                            if (cont.isActive) {
+                                // Scan auch auf dem Erfolgspfad stoppen — sonst läuft SCAN_MODE_LOW_LATENCY
+                                // ewig weiter (Radio-Drain + Androids "scanning too frequently"-Throttle).
+                                runCatching { scanner.stopScan(this) }
+                                cont.resume(BleDevice(name ?: "Canon", dev.address))
+                            }
                         }
                     }
                     val filter = ScanFilter.Builder()
@@ -232,26 +242,29 @@ class BleWaker(private val context: Context) {
     private suspend fun connect(device: BluetoothDevice): Boolean =
         withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
             suspendCancellableCoroutine<Boolean> { cont ->
-                opCont = cont
+                opCont.set(cont)
                 gatt = try {
                     device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
                 } catch (e: SecurityException) {
                     Log.w(TAG, "connectGatt-Permission fehlt", e); null
                 }
-                if (gatt == null) { opCont = null; if (cont.isActive) cont.resume(false) }
+                if (gatt == null) { opCont.compareAndSet(cont, null); if (cont.isActive) cont.resume(false) }
                 cont.invokeOnCancellation { close() }
             }
         } ?: false
 
-    /** Setzt die Continuation, ruft [start] (die eigentliche GATT-Anforderung) und wartet auf den Callback. */
+    /** Setzt die Continuation, ruft [start] (die eigentliche GATT-Anforderung) und wartet auf den Callback.
+     *  Timeout-Backstop: bleibt der Callback aus (bekannter Android-BLE-Stall) ohne Disconnect -> false. */
     private suspend fun awaitOp(start: () -> Boolean): Boolean =
-        suspendCancellableCoroutine { cont ->
-            opCont = cont
-            val started = try { start() } catch (e: SecurityException) {
-                Log.w(TAG, "GATT-Op-Permission fehlt", e); false
+        withTimeoutOrNull(OP_TIMEOUT_MS) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                opCont.set(cont)
+                val started = try { start() } catch (e: SecurityException) {
+                    Log.w(TAG, "GATT-Op-Permission fehlt", e); false
+                }
+                if (!started) { opCont.compareAndSet(cont, null); if (cont.isActive) cont.resume(false) }
             }
-            if (!started) { opCont = null; if (cont.isActive) cont.resume(false) }
-        }
+        } ?: false
 
     // setCharacteristicNotification (synchron) + CCCD-Write in einer awaitOp-Continuation; wartet auf onDescriptorWrite.
     private suspend fun enableNotifications(g: BluetoothGatt, ch: BluetoothGattCharacteristic): Boolean =
