@@ -53,10 +53,10 @@ doesn't work / partially works), especially for the Milestone-0 checklist steps.
   suchen"** / **"BLE: Pairing + Wake"** buttons look for a camera already
   paired over Bluetooth and attempt to nudge its Wi-Fi radio on with a
   `MODE_WAKE` write. This **requires a one-time Bluetooth pairing done in the
-  camera's own menu first** (Menu → "Connect to smartphone" → "Add a device"
-  → pair via Bluetooth — Canon mandates this, the app cannot pair over BLE
-  without it). Whether the wake write actually turns on the camera's Wi-Fi is
-  **not confirmed against real hardware** — treat it as best-effort, not a
+  camera's own menu first** (Menu → Wi-Fi settings → "Connect to smartphone" →
+  "Add a device" → pair via Bluetooth — Canon mandates this, the app cannot pair
+  over BLE without it). Whether the wake write actually turns on the camera's
+  Wi-Fi is **not confirmed against real hardware** — treat it as best-effort, not a
   guaranteed remote-wake feature. See
   [`docs/MILESTONE-0-PROTOKOLL.md`](docs/MILESTONE-0-PROTOKOLL.md)'s
   "BLE-Wake & Auto-WiFi" section for the open question and how to check it.

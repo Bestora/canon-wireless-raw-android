@@ -5,11 +5,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.canonwirelessraw.data.GalleryItem
 import io.github.canonwirelessraw.ui.ConnectScreen
 import io.github.canonwirelessraw.ui.CredentialsScreen
@@ -39,6 +43,19 @@ sealed interface Screen {
 fun App() {
     var screen by remember { mutableStateOf<Screen>(Screen.Connect) }
     val scope = rememberCoroutineScope()
+
+    // App backgrounded (Home button etc.) while bound to the camera's internet-less WLAN would
+    // otherwise strand the process on it until restart — release on ON_STOP, same as any other
+    // "leaving a session" path. Idempotent; only fires when the app is no longer visible, not on
+    // in-app screen switches.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) AppContainer.wifi.release()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     BackHandler(enabled = screen is Screen.Debug) { screen = Screen.Connect }
     BackHandler(enabled = screen is Screen.Credentials) { screen = Screen.Connect }
