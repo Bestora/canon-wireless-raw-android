@@ -33,7 +33,9 @@ object AppContainer {
         val appContext = context.applicationContext
         prefs = Prefs(appContext)
         ptp = PtpClient()
-        cache = MetaCache(File(appContext.cacheDir, "meta"))
+        // Versioned cache dir: bump the suffix whenever thumbnail/rating extraction logic changes
+        // so stale entries (e.g. corrupt thumbnails from the old marker-scan) are abandoned.
+        cache = MetaCache(File(appContext.cacheDir, "meta-v3"))
         repo = CameraRepository(ptp, cache, prefs)
         wifi = WifiConnector(appContext)
         ble = BleWaker(appContext)

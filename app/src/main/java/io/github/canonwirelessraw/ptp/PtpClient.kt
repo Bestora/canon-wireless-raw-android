@@ -39,6 +39,11 @@ interface PtpPort {
         eosMode: Boolean = true,
     )
     suspend fun listObjects(): List<CameraObject>
+    /** Just the object handles (one fast GetObjectHandles per storage), no per-object GetObjectInfo.
+     *  Lets a caller load metadata progressively/lazily instead of paying 1000+ round-trips up front. */
+    suspend fun listHandles(): List<Int>
+    /** GetObjectInfo for one handle → CameraObject, or null for a folder/association or on error. */
+    suspend fun objectInfo(handle: Int): CameraObject?
     suspend fun readPartial(handle: Int, offset: Long, len: Int): ByteArray
     suspend fun downloadTo(obj: CameraObject, sink: OutputStream, chunk: Int = 1 shl 20, onProgress: (Long) -> Unit)
     fun cancelIo()
@@ -105,6 +110,31 @@ class PtpClient : PtpPort {
                 }
             }
             result
+        }
+    }
+
+    override suspend fun listHandles(): List<Int> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val storageIds = PtpNative.getStorageIds(rt) ?: IntArray(0)
+            val out = ArrayList<Int>()
+            for (storageId in storageIds) {
+                val flat = PtpNative.getObjectHandles(rt, storageId, 0, 0) ?: IntArray(0)
+                // ponytail: flat listing only (verified on the R5: 1222 handles in one call).
+                // The recursive folder-walk fallback lives in listObjects() for devices that
+                // return an empty flat set; add here too if such a device ever shows up.
+                for (h in flat) out.add(h)
+            }
+            out
+        }
+    }
+
+    override suspend fun objectInfo(handle: Int): CameraObject? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val info = PtpNative.getObjectInfo(rt, handle) ?: return@withLock null
+            val format = info[3].toIntOrNull() ?: 0
+            val assocType = info[5].toIntOrNull() ?: 0
+            if (assocType != 0 || format == FORMAT_ASSOCIATION) null
+            else toCameraObject(handle, info, format)
         }
     }
 

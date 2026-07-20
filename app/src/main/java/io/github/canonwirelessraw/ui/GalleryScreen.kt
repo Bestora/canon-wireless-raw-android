@@ -4,7 +4,8 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -48,11 +50,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Rating-filter steps shown as chips; 0 stands for "Alle" (no rating filter). */
+/** Rating-filter steps shown as chips; 0 stands for "All" (no rating filter). */
 private val RATING_STEPS = 0..5
 
 private fun chipLabel(step: Int): String = when (step) {
-    0 -> "Alle"
+    0 -> "All"
     5 -> "★5"
     else -> "★$step+"
 }
@@ -69,7 +71,13 @@ private fun FileKind.badge(): String = when (this) {
  * Task 12 wires this into navigation (currently unreferenced by MainActivity).
  */
 @Composable
-fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Unit) {
+fun GalleryScreen(
+    container: AppContainer,
+    onOpen: (GalleryItem) -> Unit,
+    onDownload: (List<GalleryItem>) -> Unit,
+) {
+    // Screen stays composed while the viewer overlays it, so this state persists across the trip.
+    val gridState = rememberLazyGridState()
     val repo = container.repo
     val scope = rememberCoroutineScope()
     val items by repo.items.collectAsState()
@@ -88,9 +96,12 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    // Load once on first entry. Returning from the viewer re-composes this screen, but the list is
+    // already populated then — re-fetching would clear it (scroll jumps to top) and re-pull 1000+
+    // GetObjectInfo. Manual refresh stays available via the refresh button.
+    LaunchedEffect(Unit) { if (repo.items.value.isEmpty()) refresh() }
 
-    // "Alle" (0) also shows not-yet-rated items; ★N+ hides anything without a rating.
+    // "All" (0) also shows not-yet-rated items; ★N+ hides anything without a rating.
     val filtered = remember(items, minRating) {
         if (minRating == 0) items else items.filter { it.rating != null && it.rating >= minRating }
     }
@@ -125,7 +136,7 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                                 scanning = false
                             }
                         },
-                    ) { Text("Ratings scannen") }
+                    ) { Text("Scan ratings") }
                     if (scanning) Text("$scanDone/$scanTotal")
                 }
                 if (scanning) {
@@ -152,6 +163,7 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
 
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(96.dp),
+                    state = gridState,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 ) {
                     items(filtered, key = { it.obj.handle }) { item ->
@@ -161,7 +173,18 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                         GalleryCell(
                             item = item,
                             selected = item.obj.handle in selected,
+                            // Tap opens the zoom viewer; long-press toggles download selection.
+                            // If a selection is already active, tap toggles too (so you can keep
+                            // multi-selecting without long-pressing every cell).
                             onClick = {
+                                val handle = item.obj.handle
+                                if (selected.isNotEmpty()) {
+                                    selected = if (handle in selected) selected - handle else selected + handle
+                                } else {
+                                    onOpen(item)
+                                }
+                            },
+                            onLongClick = {
                                 val handle = item.obj.handle
                                 selected = if (handle in selected) selected - handle else selected + handle
                             },
@@ -176,9 +199,9 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(onClick = { onDownload(selectedItems) }) {
-                            Text("${selectedItems.size} herunterladen")
+                            Text("Download ${selectedItems.size}")
                         }
-                        TextButton(onClick = { selected = emptySet() }) { Text("Auswahl aufheben") }
+                        TextButton(onClick = { selected = emptySet() }) { Text("Clear selection") }
                     }
                 }
             }
@@ -186,11 +209,16 @@ fun GalleryScreen(container: AppContainer, onDownload: (List<GalleryItem>) -> Un
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GalleryCell(item: GalleryItem, selected: Boolean, onClick: () -> Unit) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = item.thumbFile) {
+private fun GalleryCell(item: GalleryItem, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = item.thumbFile, key2 = item.orientation) {
         value = withContext(Dispatchers.IO) {
-            item.thumbFile?.let { file -> runCatching { BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull() }
+            item.thumbFile?.let { file ->
+                runCatching {
+                    BitmapFactory.decodeFile(file.path)?.let { rotateForOrientation(it, item.orientation).asImageBitmap() }
+                }.getOrNull()
+            }
         }
     }
 
@@ -198,7 +226,7 @@ private fun GalleryCell(item: GalleryItem, selected: Boolean, onClick: () -> Uni
         modifier = Modifier
             .padding(2.dp)
             .aspectRatio(1f)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .let { if (selected) it.border(3.dp, Color(0xFF2196F3)) else it },
     ) {
         val bmp = bitmap

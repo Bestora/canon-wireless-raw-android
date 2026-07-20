@@ -111,6 +111,30 @@ object ImageHeaderParser {
         return header.copyOfRange(start, eoi + 2)
     }
 
+    /**
+     * Largest complete embedded JPEG (SOI…EOI) in [buf], or null if none is complete. A CR3 embeds
+     * several JPEGs of increasing size (tiny thumbnail, ~FullHD preview, full-res); this picks the
+     * biggest one contained in the buffer — used to load a sharp preview for the zoom viewer.
+     * The next FFD9 after an SOI is the real EOI: JPEG byte-stuffing (FF→FF00) means FFD9 never
+     * appears inside entropy data, only as a marker.
+     */
+    fun largestEmbeddedJpeg(buf: ByteArray): ByteArray? {
+        var bestStart = -1
+        var bestEnd = -1 // exclusive
+        var i = 0
+        while (true) {
+            val soi = indexOfSoi(buf, i) ?: break
+            val eoi = indexOfEoi(buf, soi + 2) ?: break // no complete JPEG after this point
+            val end = eoi + 2
+            if (bestStart < 0 || end - soi > bestEnd - bestStart) {
+                bestStart = soi
+                bestEnd = end
+            }
+            i = end
+        }
+        return if (bestStart < 0) null else buf.copyOfRange(bestStart, bestEnd)
+    }
+
     /** Dispatch by FileKind: CR3->cr3Rating, JPEG->jpegRating, HEIF->cr3Rating (best effort), OTHER->null. */
     fun rating(kind: FileKind, header: ByteArray): Int? = when (kind) {
         FileKind.CR3, FileKind.HEIF -> cr3Rating(header)
@@ -168,12 +192,17 @@ object ImageHeaderParser {
 
     private fun indexOfSoi(header: ByteArray, from: Int): Int? {
         var i = from
-        while (i + 3 <= header.size) {
+        while (i + 4 <= header.size) {
             if ((header[i].toInt() and 0xFF) == 0xFF &&
                 (header[i + 1].toInt() and 0xFF) == 0xD8 &&
                 (header[i + 2].toInt() and 0xFF) == 0xFF
             ) {
-                return i
+                // A real JPEG's first segment after SOI is a marker in 0xC0..0xFE (DQT 0xDB,
+                // APPn 0xE0-0xEF, SOF 0xC0.., …), never 0xD8/0xD9. Canon's own metadata contains
+                // stray FFD8FF byte sequences (e.g. followed by 0xBF) that are NOT image starts;
+                // without this check we'd slice a corrupt JPEG the decoder rejects → blank cell.
+                val marker = header[i + 3].toInt() and 0xFF
+                if (marker in 0xC0..0xFE && marker != 0xD8 && marker != 0xD9) return i
             }
             i++
         }

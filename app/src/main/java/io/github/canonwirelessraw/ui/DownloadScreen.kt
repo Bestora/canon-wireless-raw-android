@@ -36,7 +36,7 @@ import io.github.canonwirelessraw.ptp.PtpException
 /**
  * The cancel signal from [io.github.canonwirelessraw.data.CameraRepository.cancel] surfaces as
  * this specific exception (PtpClient's CODE_CANCELLED = -99) out of the currently running
- * transfer. Distinguishes "user hit Abbrechen, stop the whole batch" from "this one file failed,
+ * transfer. Distinguishes "user hit Cancel, stop the whole batch" from "this one file failed,
  * keep going with the rest".
  */
 fun isCancelDownload(e: Throwable): Boolean = e is PtpException && e.step == "download" && e.code == -99
@@ -103,9 +103,9 @@ fun DownloadScreen(
     // After a cancel the session is dead → reconnect; otherwise back to the gallery.
     val leave = { if (wasCancelled) onSessionDead() else onDone() }
 
-    // Consumed while the batch runs (no-op — use the Abbrechen button), so back does NOT fall
+    // Consumed while the batch runs (no-op — use the Cancel button), so back does NOT fall
     // through to the Activity default and kill the app mid-download. Once the batch ends, back
-    // returns to the gallery (or reconnect, if cancelled) just like "Fertig".
+    // returns to the gallery (or reconnect, if cancelled) just like "Done".
     BackHandler(enabled = running) { /* blockiert waehrend Download; Abbrechen-Button nutzen */ }
     BackHandler(enabled = !running) { leave() }
 
@@ -121,7 +121,7 @@ fun DownloadScreen(
 
                 if (running) {
                     Button(onClick = { repo.cancel() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Abbrechen")
+                        Text("Cancel")
                     }
                 } else {
                     Row(
@@ -132,8 +132,8 @@ fun DownloadScreen(
                             enabled = doneUris.isNotEmpty(),
                             onClick = { context.startActivity(Saver.shareIntent(doneUris)) },
                             modifier = Modifier.weight(1f),
-                        ) { Text("Teilen…") }
-                        Button(onClick = leave, modifier = Modifier.weight(1f)) { Text("Fertig") }
+                        ) { Text("Share…") }
+                        Button(onClick = leave, modifier = Modifier.weight(1f)) { Text("Done") }
                     }
                 }
             }

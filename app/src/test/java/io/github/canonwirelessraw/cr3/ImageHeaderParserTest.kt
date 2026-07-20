@@ -241,8 +241,20 @@ class ImageHeaderParserTest {
 
     @Test
     fun `embeddedJpeg returns null when EOI missing`() {
-        val buf = byteArrayOf(1, 2) + byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) + byteArrayOf(3, 4, 5)
+        // valid SOI marker (FFD8 FFE0) but no EOI → still null
+        val buf = byteArrayOf(1, 2) + byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + byteArrayOf(3, 4, 5)
         assertNull(ImageHeaderParser.embeddedJpeg(buf))
+    }
+
+    @Test
+    fun `embeddedJpeg skips a false FFD8FF whose marker byte is invalid`() {
+        // Canon metadata can contain FFD8FF followed by a non-marker byte (e.g. 0xBF) before the
+        // real thumbnail; the parser must skip it and find the genuine JPEG (FFD8 FFDB).
+        val fake = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xBF.toByte(), 0x11, 0x22)
+        val real = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xDB.toByte()) +
+            byteArrayOf(1, 2, 3) + byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+        val result = ImageHeaderParser.embeddedJpeg(fake + real)
+        assertArrayEquals(real, result)
     }
 
     @Test
@@ -253,13 +265,40 @@ class ImageHeaderParserTest {
 
     @Test
     fun `embeddedJpeg respects minStart offset`() {
-        val firstJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) + byteArrayOf(1, 2) +
+        val firstJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + byteArrayOf(1, 2) +
             byteArrayOf(0xFF.toByte(), 0xD9.toByte())
-        val secondJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) + byteArrayOf(9, 9) +
+        val secondJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + byteArrayOf(9, 9) +
             byteArrayOf(0xFF.toByte(), 0xD9.toByte())
         val buf = firstJpeg + secondJpeg
         val result = ImageHeaderParser.embeddedJpeg(buf, minStart = firstJpeg.size)
         assertArrayEquals(secondJpeg, result)
+    }
+
+    // ---- largestEmbeddedJpeg ----
+
+    @Test
+    fun `largestEmbeddedJpeg picks the biggest of several JPEGs`() {
+        val soi = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) // valid marker
+        val eoi = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+        val small = soi + ByteArray(4) + eoi
+        val big = soi + ByteArray(40) { 7 } + eoi
+        val mid = soi + ByteArray(15) + eoi
+        val buf = byteArrayOf(1, 2) + small + byteArrayOf(3) + big + byteArrayOf(4) + mid
+        assertArrayEquals(big, ImageHeaderParser.largestEmbeddedJpeg(buf))
+    }
+
+    @Test
+    fun `largestEmbeddedJpeg ignores an incomplete trailing JPEG`() {
+        val soi = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        val complete = soi + ByteArray(6) + byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+        val truncated = soi + ByteArray(20) // valid SOI, no EOI
+        val buf = complete + truncated
+        assertArrayEquals(complete, ImageHeaderParser.largestEmbeddedJpeg(buf))
+    }
+
+    @Test
+    fun `largestEmbeddedJpeg returns null when no complete JPEG`() {
+        assertNull(ImageHeaderParser.largestEmbeddedJpeg(byteArrayOf(1, 2, 3, 4, 5)))
     }
 
     // ---- rating dispatch ----

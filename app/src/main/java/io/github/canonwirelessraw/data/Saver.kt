@@ -9,19 +9,22 @@ import io.github.canonwirelessraw.ptp.FileKind
 import java.io.OutputStream
 
 object Saver {
-    /** Legt Pictures/CanonRAW/<name> via MediaStore an (IS_PENDING-Muster).
+    /** Legt Download/CanonRAW/<name> via MediaStore an (IS_PENDING-Muster).
      *  Ruft body mit dem OutputStream auf; bei Exception wird der Eintrag gelöscht.
-     *  Rückgabe: content-Uri der fertigen Datei. */
-    fun saveToPictures(context: Context, name: String, mime: String, body: (OutputStream) -> Unit): Uri {
+     *  Rückgabe: content-Uri der fertigen Datei.
+     *  Downloads (nicht Images): die Images-Collection lehnt CR3 mit
+     *  "Unsupported MIME type image/x-canon-cr3" ab; Downloads akzeptiert jeden Typ,
+     *  und RAW gehört ohnehin nicht in die Foto-Galerie. */
+    fun saveDownload(context: Context, name: String, mime: String, body: (OutputStream) -> Unit): Uri {
         val contentResolver = context.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, sanitizeDisplayName(name))
-            put(MediaStore.Images.Media.MIME_TYPE, mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CanonRAW")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+            put(MediaStore.Downloads.DISPLAY_NAME, sanitizeDisplayName(name))
+            put(MediaStore.Downloads.MIME_TYPE, mime)
+            put(MediaStore.Downloads.RELATIVE_PATH, "Download/CanonRAW")
+            put(MediaStore.Downloads.IS_PENDING, 1)
         }
 
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: throw IllegalStateException("MediaStore insert failed")
 
         try {
@@ -30,7 +33,7 @@ object Saver {
             stream.use { body(it) }
 
             values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
         } catch (e: Exception) {
             try {

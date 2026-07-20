@@ -87,7 +87,7 @@ fun DebugScreen(container: AppContainer) {
         if (busy) return
         busy = true
         scope.launch {
-            runCatching { action() }.onFailure { e -> log("FEHLER: $e") }
+            runCatching { action() }.onFailure { e -> log("ERROR: $e") }
             busy = false
         }
     }
@@ -102,7 +102,7 @@ fun DebugScreen(container: AppContainer) {
                 OutlinedTextField(
                     value = ip,
                     onValueChange = { ip = it },
-                    label = { Text("Kamera-IP") },
+                    label = { Text("Camera IP") },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -126,14 +126,14 @@ fun DebugScreen(container: AppContainer) {
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         runStep {
-                            log("EOS Remote/Event Mode: setzen...")
+                            log("EOS Remote/Event Mode: setting...")
                             val result = container.ptp.eosMode()
                             log("eosSetRemoteMode rc=${result.remoteModeCode}")
                             log("eosSetEventMode rc=${result.eventModeCode}")
                             if (result.remoteModeCode == 0 && result.eventModeCode == 0) {
                                 log("EOS Mode OK")
                             } else {
-                                log("EOS Mode: mindestens ein Schritt fehlgeschlagen")
+                                log("EOS Mode: at least one step failed")
                             }
                         }
                     },
@@ -146,13 +146,13 @@ fun DebugScreen(container: AppContainer) {
                         runStep {
                             container.repo.refreshList()
                             val items = container.repo.items.value
-                            log("Liste geladen: ${items.size} Objekte")
+                            log("List loaded: ${items.size} objects")
                             items.take(5).forEach {
                                 log(" - ${it.obj.name} (${dateFmt.format(Date(it.obj.takenAtMillis))})")
                             }
                         }
                     },
-                ) { Text("3. Liste laden") }
+                ) { Text("3. Load list") }
 
                 Button(
                     enabled = !busy,
@@ -160,12 +160,12 @@ fun DebugScreen(container: AppContainer) {
                     onClick = {
                         runStep {
                             val item = container.repo.items.value.firstOrNull { it.obj.kind == FileKind.CR3 }
-                                ?: error("Kein CR3 in der Liste (erst Schritt 3 ausführen)")
+                                ?: error("No CR3 in the list (run step 3 first)")
                             val bytes = container.ptp.readPartial(item.obj.handle, 0, PARTIAL_HEADER_BYTES)
-                            log("Partial gelesen: ${bytes.size} Bytes von ${item.obj.name}")
+                            log("Partial read: ${bytes.size} bytes from ${item.obj.name}")
                             val rating = ImageHeaderParser.cr3Rating(bytes)
                             val jpegSize = ImageHeaderParser.embeddedJpeg(bytes)?.size
-                            log("Rating: $rating, embeddedJpeg: ${jpegSize?.toString() ?: "keins"} Bytes")
+                            log("Rating: $rating, embeddedJpeg: ${jpegSize?.toString() ?: "none"} bytes")
                         }
                     },
                 ) { Text("4. 128 KB Partial + Rating") }
@@ -176,8 +176,8 @@ fun DebugScreen(container: AppContainer) {
                     onClick = {
                         runStep {
                             val item = container.repo.items.value.firstOrNull { it.obj.kind == FileKind.CR3 }
-                                ?: error("Kein CR3 in der Liste (erst Schritt 3 ausführen)")
-                            log("Download: ${item.obj.name} (${item.obj.size} Bytes)")
+                                ?: error("No CR3 in the list (run step 3 first)")
+                            log("Download: ${item.obj.name} (${item.obj.size} bytes)")
                             var lastBucket = -1
                             val uri = container.repo.download(context, item) { done ->
                                 val pct = if (item.obj.size > 0) (done * 100 / item.obj.size).toInt() else 100
@@ -187,10 +187,10 @@ fun DebugScreen(container: AppContainer) {
                                     log("Download: $bucket%")
                                 }
                             }
-                            log("Download fertig: $uri")
+                            log("Download complete: $uri")
                         }
                     },
-                ) { Text("5. Voll-Download erste CR3") }
+                ) { Text("5. Full download of first CR3") }
 
                 Button(
                     enabled = !busy,
@@ -212,20 +212,20 @@ fun DebugScreen(container: AppContainer) {
                         runStep {
                             if (!hasBlePermissions()) {
                                 blePermissionLauncher.launch(blePermissions)
-                                log("Berechtigung angefragt — erneut tippen")
+                                log("Permission requested — tap again")
                                 return@runStep
                             }
-                            log("BLE-Scan: suche Kamera...")
+                            log("BLE scan: searching for camera...")
                             val device = container.ble.scanForCamera()
                             foundBleDevice = device
                             if (device != null) {
-                                log("Gefunden: ${device.name} (${device.address})")
+                                log("Found: ${device.name} (${device.address})")
                             } else {
-                                log("nichts gefunden (im Kameramenü koppeln!)")
+                                log("nothing found (pair via the camera menu!)")
                             }
                         }
                     },
-                ) { Text("BLE: Kamera suchen") }
+                ) { Text("BLE: Scan for camera") }
 
                 Button(
                     enabled = !busy,
@@ -234,18 +234,18 @@ fun DebugScreen(container: AppContainer) {
                         runStep {
                             if (!hasBlePermissions()) {
                                 blePermissionLauncher.launch(blePermissions)
-                                log("Berechtigung angefragt — erneut tippen")
+                                log("Permission requested — tap again")
                                 return@runStep
                             }
-                            val device = foundBleDevice ?: run { log("erst suchen"); return@runStep }
+                            val device = foundBleDevice ?: run { log("scan first"); return@runStep }
                             log("Pairing + Wake: ${device.name} (${device.address})")
                             val result = container.ble.pairAndWake(device)
                             log("WakeResult: $result")
                             when (result) {
                                 WakeResult.NEEDS_CONFIRMATION ->
-                                    log("am Kamera-Display bestätigen")
+                                    log("confirm on the camera display")
                                 WakeResult.PAIRED_WAKE_SENT ->
-                                    log("Wake gesendet — prüfe, ob das Kamera-WLAN jetzt erscheint (NICHT garantiert)")
+                                    log("Wake sent — check whether the camera's Wi-Fi now appears (not guaranteed)")
                                 else -> {}
                             }
                         }
