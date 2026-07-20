@@ -2,6 +2,7 @@ package io.github.canonwirelessraw.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -67,7 +68,14 @@ fun DebugScreen(container: AppContainer) {
         logLines.add("${timeFmt.format(Date())} $msg")
     }
 
-    val blePermissions = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+    // API 31+: BLUETOOTH_SCAN/CONNECT are runtime permissions. Below that (down to minSdk 29),
+    // those two don't exist yet — BLUETOOTH/BLUETOOTH_ADMIN are install-time there, only
+    // ACCESS_FINE_LOCATION needs a runtime grant for BLE scanning.
+    val blePermissions =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        else
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     fun hasBlePermissions() =
         blePermissions.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     val blePermissionLauncher =
