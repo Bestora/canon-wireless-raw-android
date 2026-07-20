@@ -30,24 +30,42 @@ class WifiConnector(private val context: Context) {
             .setNetworkSpecifier(specifier)
             .build()
 
-        val ok = withTimeoutOrNull(timeoutMs) {
-            suspendCancellableCoroutine<Boolean> { cont ->
-                val cb = object : ConnectivityManager.NetworkCallback() {
-                    override fun onAvailable(network: Network) {
-                        cm.bindProcessToNetwork(network)   // Traffic (auch libpicts C-Socket) übers Kamera-Netz
-                        if (cont.isActive) cont.resume(true)
+        var readyNetwork: Network? = null
+        val ok = try {
+            withTimeoutOrNull(timeoutMs) {
+                suspendCancellableCoroutine<Boolean> { cont ->
+                    val cb = object : ConnectivityManager.NetworkCallback() {
+                        override fun onAvailable(network: Network) {
+                            // Bind-Entscheidung erst NACH garantiertem Resume-Erfolg treffen (unten,
+                            // gated auf ok == true) -- vermeidet die Race gegen den Timeout-Zweig, der
+                            // sonst nach release() erneut binden könnte. Hier nur das Network merken;
+                            // resume() auf einer bereits abgebrochenen CancellableContinuation ist laut
+                            // Kotlin-Coroutines-Vertrag ein sicheres No-Op (kein Crash, kein Doppel-Resume).
+                            readyNetwork = network
+                            if (cont.isActive) cont.resume(true)
+                        }
+                        override fun onUnavailable() {
+                            if (cont.isActive) cont.resumeWithException(
+                                WifiJoinException("Kamera-WLAN nicht verfügbar (Dialog abgebrochen oder falsches Passwort?)"))
+                        }
                     }
-                    override fun onUnavailable() {
-                        if (cont.isActive) cont.resumeWithException(
-                            WifiJoinException("Kamera-WLAN nicht verfügbar (Dialog abgebrochen oder falsches Passwort?)"))
-                    }
+                    callback = cb
+                    cm.requestNetwork(request, cb)
+                    cont.invokeOnCancellation { runCatching { cm.unregisterNetworkCallback(cb) } }
                 }
-                callback = cb
-                cm.requestNetwork(request, cb)
-                cont.invokeOnCancellation { runCatching { cm.unregisterNetworkCallback(cb) } }
             }
+        } catch (e: WifiJoinException) {
+            // resumeWithException completet normal (kein Cancel), invokeOnCancellation feuert nicht ->
+            // ohne dieses catch bliebe der NetworkCallback für immer registriert (Leak pro Fehlversuch).
+            release()
+            throw e
         }
         if (ok != true) { release(); throw WifiJoinException("Zeitüberschreitung beim Verbinden mit dem Kamera-WLAN") }
+        // ok == true ist nur erreichbar, wenn resume(true) die Coroutine tatsächlich fortgesetzt hat --
+        // bei einer Race mit dem Timeout hätte die Cancellation gewonnen und ok wäre null (Zweig oben).
+        // Binden also erst hier, mit dem Ergebnis bereits feststehend: kein Fenster mehr, in dem
+        // onAvailable nach einem bereits gelaufenen release() erneut bindet.
+        cm.bindProcessToNetwork(readyNetwork)   // Traffic (auch libpicts C-Socket) übers Kamera-Netz
     }
 
     /** Prozess-Bindung lösen + Callback abmelden. Idempotent. Immer im finally/onDispose aufrufen. */
