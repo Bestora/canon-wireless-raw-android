@@ -1,0 +1,20 @@
+Wireless CR3/RAW download from Canon EOS cameras straight to your Android phone — over plain PTP/IP, the same Wi-Fi protocol gphoto2 and Canon's own tools use. No CCAPI activation, no Canon account, no cloud, no PC in the loop.
+
+<b>Features</b>
+
+<ul>
+<li>Progressive gallery with thumbnails while the camera list is still loading</li>
+<li>Reads in-camera star ratings, filter by rating</li>
+<li>Full-HD preview extraction for quick viewing and zoom</li>
+<li>Full-resolution CR3 download to your phone's storage</li>
+<li>Automatic Wi-Fi join to the camera's access point</li>
+<li>Experimental BLE wake of the camera</li>
+</ul>
+
+<b>Supported cameras</b>
+
+Verified end-to-end on the Canon EOS R5. Any EOS body with Wi-Fi remote control and standard PTP object transfer should work — nothing in the app restricts it to the R5. If you try another model, please open an issue with the result.
+
+<b>Privacy</b>
+
+No tracking, no analytics, no accounts. The only network traffic is the PTP/IP connection to your camera on the local network.

@@ -1,0 +1,2 @@
+New app ID (de.bestora.canonwirelessrawandroid) — fresh install required.
+New app icon, dark/light theme polish, gallery rating filter.
