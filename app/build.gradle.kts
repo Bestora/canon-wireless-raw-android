@@ -5,16 +5,16 @@ plugins {
 }
 
 android {
-    namespace = "io.github.canonwirelessraw"
+    namespace = "de.bestora.canonwirelessrawandroid"
     compileSdk = 35
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
-        applicationId = "io.github.canonwirelessraw"
+        applicationId = "de.bestora.canonwirelessrawandroid"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildFeatures { compose = true }

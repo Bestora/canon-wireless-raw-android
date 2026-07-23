@@ -33,7 +33,7 @@ app/src/main/cpp/
   libpict/            vendored petabyt/libpict (Apache-2.0). See PATCHES.md before editing.
   ptp_jni.c           JNI bridge: pairing-GUID handshake + PTP ops. Camera-specific quirks live HERE.
   CMakeLists.txt      builds libpict (-DPTP_NO_USB=ON) + ptpjni
-app/src/main/java/io/github/canonwirelessraw/
+app/src/main/java/de/bestora/canonwirelessrawandroid/
   ptp/    PtpClient (coroutine/mutex wrapper), PtpNative (JNI decls), PtpModels
   cr3/    ImageHeaderParser (rating/JPEG parsing), Cr3Container (ISO-BMFF box walker)
   data/   CameraRepository (the core), MetaCache (disk cache), Saver (MediaStore), WifiConnector, Prefs
@@ -49,7 +49,7 @@ docs/MILESTONE-0-PROTOKOLL.md   on-camera verification checklist
   unavoidable upstream edit (a genuine bug) is documented in `PATCHES.md`; re-apply it
   after any libpict update. Don't add other libpict edits without documenting them there.
 - **No new dependencies** without strong reason — Compose + Coroutines + AndroidX only.
-- **minSdk 29, compileSdk 35**, ABIs `arm64-v8a`/`x86_64`, package `io.github.canonwirelessraw`.
+- **minSdk 29, compileSdk 35**, ABIs `arm64-v8a`/`x86_64`, package `de.bestora.canonwirelessrawandroid`.
 - **All PTP calls go through `PtpClient` on `Dispatchers.IO`, serialized by a `Mutex`** —
   the native runtime is not safe for concurrent transactions. `cancelIo()` is the one
   call intentionally outside the mutex (it must interrupt an in-flight transfer).

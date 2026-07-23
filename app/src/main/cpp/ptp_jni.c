@@ -101,13 +101,13 @@ static int init_command_request_guid(struct PtpRuntime *r, const uint8_t *guid, 
 // --- lifecycle ---
 
 JNIEXPORT jlong JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_create(JNIEnv *env, jobject thiz) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_create(JNIEnv *env, jobject thiz) {
     (void)env; (void)thiz;
     return (jlong)(intptr_t)ptp_new(PTP_IP);
 }
 
 JNIEXPORT void JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_destroy(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_destroy(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz;
     // ptp_close() -> ptp_comm_deinit() (sockets + comm_priv) + free(data) + free(r)
     ptp_close(RT(rt));
@@ -116,7 +116,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_destroy(JNIEnv *env, jobject thiz,
 // --- connection: ptpip_connect + custom GUID handshake + event channel ---
 
 JNIEXPORT jint JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_connect(JNIEnv *env, jobject thiz, jlong rt,
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_connect(JNIEnv *env, jobject thiz, jlong rt,
                                                       jstring ip, jint port,
                                                       jbyteArray guid, jstring name) {
     (void)thiz;
@@ -180,19 +180,19 @@ done:
 // --- session / EOS mode wrappers (libpict return code passed through) ---
 
 JNIEXPORT jint JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_openSession(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_openSession(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz;
     return set_err(ptp_open_session(RT(rt)));
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_eosSetRemoteMode(JNIEnv *env, jobject thiz, jlong rt, jint mode) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_eosSetRemoteMode(JNIEnv *env, jobject thiz, jlong rt, jint mode) {
     (void)env; (void)thiz;
     return set_err(ptp_eos_set_remote_mode(RT(rt), mode));
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_eosSetEventMode(JNIEnv *env, jobject thiz, jlong rt, jint mode) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_eosSetEventMode(JNIEnv *env, jobject thiz, jlong rt, jint mode) {
     (void)env; (void)thiz;
     return set_err(ptp_eos_set_event_mode(RT(rt), mode));
 }
@@ -200,7 +200,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_eosSetEventMode(JNIEnv *env, jobje
 // --- payload wrappers (return NULL on failure) ---
 
 JNIEXPORT jintArray JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_getStorageIds(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getStorageIds(JNIEnv *env, jobject thiz, jlong rt) {
     (void)thiz;
     struct PtpArray *arr = NULL;
     int rc = ptp_get_storage_ids(RT(rt), &arr);
@@ -220,7 +220,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_getStorageIds(JNIEnv *env, jobject
 }
 
 JNIEXPORT jintArray JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_getObjectHandles(JNIEnv *env, jobject thiz, jlong rt,
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getObjectHandles(JNIEnv *env, jobject thiz, jlong rt,
                                                                jint storageId, jint format, jint parent) {
     (void)thiz;
     struct PtpArray *arr = NULL;
@@ -240,7 +240,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_getObjectHandles(JNIEnv *env, jobj
 }
 
 JNIEXPORT jobjectArray JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_getObjectInfo(JNIEnv *env, jobject thiz, jlong rt, jint handle) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getObjectInfo(JNIEnv *env, jobject thiz, jlong rt, jint handle) {
     (void)thiz;
     struct PtpObjectInfo oi;
     memset(&oi, 0, sizeof(oi));
@@ -276,7 +276,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_getObjectInfo(JNIEnv *env, jobject
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_getPartialObject(JNIEnv *env, jobject thiz, jlong rt,
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getPartialObject(JNIEnv *env, jobject thiz, jlong rt,
                                                                jint handle, jlong offset, jint maxLen) {
     (void)thiz;
     // libpict takes unsigned int offset; CR3s are < 4 GB so a >UINT32_MAX offset
@@ -304,7 +304,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_getPartialObject(JNIEnv *env, jobj
 // --- control ---
 
 JNIEXPORT void JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_cancel(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_cancel(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz;
     struct PtpRuntime *r = RT(rt);
     // Called from another thread on purpose: a single-byte flag write that makes
@@ -313,7 +313,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_cancel(JNIEnv *env, jobject thiz, 
 }
 
 JNIEXPORT void JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_disconnect(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_disconnect(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz;
     struct PtpRuntime *r = RT(rt);
     if (r == NULL) return;
@@ -322,7 +322,7 @@ Java_io_github_canonwirelessraw_ptp_PtpNative_disconnect(JNIEnv *env, jobject th
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_canonwirelessraw_ptp_PtpNative_lastError(JNIEnv *env, jobject thiz, jlong rt) {
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_lastError(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz; (void)rt;
     return g_last_error;
 }

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Motiv leicht verkleinert + nach rechts optisch zentriert, bleibt in der 66%-Safe-Zone -->
+    <group
+        android:scaleX="0.88"
+        android:scaleY="0.88"
+        android:pivotX="256"
+        android:pivotY="256"
+        android:translateX="14">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 182 256 m -34 0 a 34 34 0 1 1 68 0 a 34 34 0 1 1 -68 0" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="14"
+            android:strokeAlpha="0.55"
+            android:pathData="M 182 256 m -66 0 a 66 66 0 1 1 132 0 a 66 66 0 1 1 -132 0" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="30"
+            android:strokeLineCap="round"
+            android:pathData="M 237 161 A 110 110 0 0 1 237 351" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="30"
+            android:strokeLineCap="round"
+            android:pathData="M 272 101 A 179 179 0 0 1 272 411" />
+    </group>
+</vector>

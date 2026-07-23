@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" alt="App logo" width="96" align="right">
+
 # Canon Wireless RAW for Android
 
 Wireless CR3/RAW download from Canon EOS cameras straight to your Android phone —
