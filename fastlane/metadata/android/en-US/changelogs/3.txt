@@ -1,0 +1,1 @@
+Gradle wrapper hardening: pinned distribution SHA-256, official 8.10.2 wrapper jar (F-Droid issuebot findings). No app changes.
