@@ -46,11 +46,24 @@ void ptpusb_free_device_list_entry(void *ptr) { (void)ptr; }
 //      variable length: header(8) + GUID(16) + UTF-16LE name incl. null terminator +
 //      version(4). We build it into r->data (~1 MB, ample) and send exactly that many
 //      bytes. ACK handling is byte-for-byte the upstream logic.
+// ptpip_cmd_read() returns 0 for EOF *and* for a SO_RCVTIMEO timeout, so 0 is a
+// failure here, never "no data yet".
+static int read_full(struct PtpRuntime *r, uint8_t *buf, uint32_t n) {
+    for (uint32_t got = 0; got < n;) {
+        int x = ptpip_cmd_read(r, buf + got, n - got);
+        if (x <= 0) return -1;
+        got += (uint32_t)x;
+    }
+    return 0;
+}
+
+// Returns 0 on ACK, PTP_CHECK_CODE when the camera answered INIT_FAIL (unknown GUID,
+// confirmation pending on the camera), PTP_IO_ERR when it never gave a valid answer.
 static int init_command_request_guid(struct PtpRuntime *r, const uint8_t *guid, const char *name) {
     size_t name_len = strlen(name);
     if (name_len > 32) {
         LOGE("init request: device name too long (%zu chars, max 32)", name_len);
-        return PTP_CHECK_CODE; // reject, never truncate
+        return PTP_RUNTIME_ERR; // reject, never truncate
     }
 
     // length(4) + type(4) + GUID(16) + UTF-16LE name incl. null terminator + version(4)
@@ -79,22 +92,16 @@ static int init_command_request_guid(struct PtpRuntime *r, const uint8_t *guid, 
 
     if (ptpip_cmd_write(r, r->data, p->length) != (int)p->length) return PTP_IO_ERR;
 
-    // ACK handling unchanged from upstream: read the response length, then the rest.
-    // p points into r->data, so p->length becomes the RESPONSE length after this read.
-    int x = ptpip_cmd_read(r, r->data, 4);
-    if (x < 0) return PTP_IO_ERR;
-    // p->length is now the camera-supplied response length. Bound it before the
-    // second read: a hostile responder could send <8 (header underflows p->length-4)
-    // or a huge value overflowing r->data (allocated to data_length). Reject both.
-    if (p->length < 8 || p->length > r->data_length) return PTP_IO_ERR;
-    x = ptpip_cmd_read(r, r->data + 4, p->length - 4);
-    if (x < 0) return PTP_IO_ERR;
-
+    // Read the 8-byte header (length + type), then the rest of the answer. The
+    // camera-supplied length is bounded first: <8 would underflow, >data_length
+    // would overflow r->data.
     struct PtpIpHeader *hdr = (struct PtpIpHeader *)r->data;
-    if (hdr->type == PTPIP_INIT_FAIL) {
-        return PTP_CHECK_CODE;
-    }
+    if (read_full(r, buf, 8)) return PTP_IO_ERR;
+    if (hdr->length < 8 || hdr->length > r->data_length) return PTP_IO_ERR;
+    if (read_full(r, buf + 8, hdr->length - 8)) return PTP_IO_ERR;
 
+    if (hdr->type == PTPIP_INIT_FAIL) return PTP_CHECK_CODE;
+    if (hdr->type != PTPIP_INIT_COMMAND_ACK) return PTP_IO_ERR;
     return 0;
 }
 
@@ -148,7 +155,7 @@ Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_connect(JNIEnv *env, jobje
     rc = init_command_request_guid(r, guid_buf, name_c);
     if (rc) {
         LOGE("connect: init_command_request_guid failed rc=%d", rc);
-        result = -2;
+        result = rc == PTP_CHECK_CODE ? -2 : -6;
         goto done;
     }
     rc = ptpip_connect_events(r, ip_c, port);
@@ -182,6 +189,9 @@ done:
 JNIEXPORT jint JNICALL
 Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_openSession(JNIEnv *env, jobject thiz, jlong rt) {
     (void)env; (void)thiz;
+    // Canon's mobile SDK always opens session 0x41 (CPtpipDevice::EstablishPtpipConnection);
+    // ptp_open_session() increments r->session before sending.
+    RT(rt)->session = 0x40;
     return set_err(ptp_open_session(RT(rt)));
 }
 
@@ -195,6 +205,73 @@ JNIEXPORT jint JNICALL
 Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_eosSetEventMode(JNIEnv *env, jobject thiz, jlong rt, jint mode) {
     (void)env; (void)thiz;
     return set_err(ptp_eos_set_event_mode(RT(rt), mode));
+}
+
+// libpict keeps a pointer to the last parsed device info (r->di) and reads it later, so it must
+// outlive the call. ponytail: one static block, same single-connection ceiling as g_last_error.
+static struct PtpDeviceInfo g_device_info;
+
+// GetDeviceInfo; returns the camera model, NULL on failure. Checks for a data phase before parsing:
+// libpict's parser ptp_panic()s (abort) on a response without one.
+JNIEXPORT jstring JNICALL
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getDeviceInfo(JNIEnv *env, jobject thiz, jlong rt) {
+    (void)thiz;
+    struct PtpRuntime *r = RT(rt);
+    struct PtpCommand cmd;
+    cmd.code = PTP_OC_GetDeviceInfo;
+    cmd.param_length = 0;
+    int rc = ptp_send(r, &cmd);
+    if (rc) {
+        set_err(rc);
+        return NULL;
+    }
+    if (((struct PtpIpHeader *)r->data)->type != PTPIP_DATA_PACKET_START) {
+        set_err(PTP_IO_ERR);
+        return NULL;
+    }
+    memset(&g_device_info, 0, sizeof g_device_info);
+    ptp_parse_device_info(r, &g_device_info);
+    set_err(0);
+    return (*env)->NewStringUTF(env, g_device_info.model);
+}
+
+// Serial number from the last GetDeviceInfo (empty before the first one).
+JNIEXPORT jstring JNICALL
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_deviceSerial(JNIEnv *env, jobject thiz, jlong rt) {
+    (void)thiz; (void)rt;
+    return (*env)->NewStringUTF(env, g_device_info.serial_number);
+}
+
+// Canon EOS GetEvent (0x9116): the camera queues state changes and expects the host to poll.
+// Returns the raw event records (empty when the camera sent no data phase), NULL on failure.
+JNIEXPORT jbyteArray JNICALL
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_eosGetEvent(JNIEnv *env, jobject thiz, jlong rt) {
+    (void)thiz;
+    struct PtpRuntime *r = RT(rt);
+    int rc = ptp_eos_get_event(r);
+    if (rc) {
+        set_err(rc);
+        return NULL;
+    }
+    set_err(0);
+    struct PtpIpHeader *h = (struct PtpIpHeader *)r->data;
+    unsigned int len = h->type == PTPIP_DATA_PACKET_START ? ptp_get_payload_length(r) : 0;
+    jbyteArray out = (*env)->NewByteArray(env, (jsize)len);
+    if (out != NULL && len > 0) {
+        (*env)->SetByteArrayRegion(env, out, 0, (jsize)len, (const jbyte *)ptp_get_payload(r));
+    }
+    return out;
+}
+
+// Canon's mobile SDK pings the camera with DoNothing (0x902F, no params) every 5 s over the command
+// channel (CMobilePtpHelper::DispatchPingCommand) and treats a failed ping as a disconnect.
+JNIEXPORT jint JNICALL
+Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_canonPing(JNIEnv *env, jobject thiz, jlong rt) {
+    (void)env; (void)thiz;
+    struct PtpCommand cmd;
+    cmd.code = PTP_OC_CANON_DoNothing;
+    cmd.param_length = 0;
+    return set_err(ptp_send(RT(rt), &cmd));
 }
 
 // --- payload wrappers (return NULL on failure) ---
@@ -302,15 +379,6 @@ Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_getPartialObject(JNIEnv *e
 }
 
 // --- control ---
-
-JNIEXPORT void JNICALL
-Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_cancel(JNIEnv *env, jobject thiz, jlong rt) {
-    (void)env; (void)thiz;
-    struct PtpRuntime *r = RT(rt);
-    // Called from another thread on purpose: a single-byte flag write that makes
-    // the in-flight ptpip_cmd_read/write bail out.
-    if (r != NULL) r->io_kill_switch = 1;
-}
 
 JNIEXPORT void JNICALL
 Java_de_bestora_canonwirelessrawandroid_ptp_PtpNative_disconnect(JNIEnv *env, jobject thiz, jlong rt) {
