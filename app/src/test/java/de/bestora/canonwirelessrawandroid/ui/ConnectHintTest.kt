@@ -8,13 +8,28 @@ import org.junit.Test
 class ConnectHintTest {
 
     @Test
-    fun `pairing ack failure (-2) shows camera confirm hint`() {
+    fun `camera refusal (-2) after the pairing window shows camera confirm hint`() {
         val hint = connectHint(PtpException("connect", -2))
         assertEquals(
-            "Confirm the connection on the camera and try again immediately " +
-                "(the time window is only a few seconds).",
+            "The camera did not confirm the connection in time. Accept the prompt on the camera " +
+                "and try again.",
             hint,
         )
+    }
+
+    @Test
+    fun `silent camera (-6) points at the remote control mode`() {
+        val hint = connectHint(PtpException("connect", -6))
+        assertEquals(
+            "The camera did not answer. Make sure it is in Remote control (EOS Utility) mode " +
+                "and waiting for a connection.",
+            hint,
+        )
+    }
+
+    @Test
+    fun `live status asks for confirmation while the camera refuses`() {
+        assertEquals("Confirm the connection on the camera…", connectStatus(PtpException("connect", -2)))
     }
 
     @Test

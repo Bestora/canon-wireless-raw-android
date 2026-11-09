@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.CanonWirelessRaw" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Dark window: light system-bar icons and no white flash before Compose draws the loupe grey. -->
+    <style name="Theme.CanonWirelessRaw" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/loupe_grey</item>
+    </style>
 </resources>
