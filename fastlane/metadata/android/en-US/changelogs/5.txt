@@ -1,0 +1,4 @@
+Connect over Bluetooth: pair once, then one tap wakes the camera, joins its Wi-Fi and opens the card.
+Stable connection: stays up while you use other apps, reconnects by itself; cancelling a download no longer drops the camera.
+Gallery grouped by day with a date scrubber; new shots appear live; reconnects show the full list at once.
+Open in Luminar or any editor you pick once. New contact-sheet design. Several cameras.
