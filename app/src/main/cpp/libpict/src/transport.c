@@ -94,7 +94,11 @@ int ptpip_read_packet(struct PtpRuntime *r, int of) {
 	while (1) {
 		rc = ptpip_cmd_read(r, r->data + of + read, h->length - read);
 
-		if (rc < 0) {
+		// LOCAL PATCH (canon-wireless-raw): upstream only bailed on rc < 0, but
+		// ptpip_cmd_read() returns 0 both on EOF and on a SO_RCVTIMEO timeout
+		// (errno 11 on Android). A camera that closed or went silent mid-packet
+		// spun this loop forever. See PATCHES.md.
+		if (rc <= 0) {
 			ptp_verbose_log("Read error: %d\n", rc);
 			return PTP_IO_ERR;
 		}
