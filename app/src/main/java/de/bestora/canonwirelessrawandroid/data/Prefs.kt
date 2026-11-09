@@ -8,6 +8,14 @@ private const val KEY_PAIRING_GUID_HEX = "pairing_guid_hex"
 private const val KEY_LAST_IP = "last_ip"
 private const val KEY_CAMERA_SSID = "camera_ssid"
 private const val KEY_CAMERA_PSK = "camera_psk"
+private const val KEY_CAMERAS = "cameras"
+private const val KEY_EDITOR = "editor_component"
+
+/** A camera paired over Bluetooth. [address] is its fixed Bluetooth MAC; [model] comes from the
+ *  first connect ("Canon EOS R5"), until then [bleName] ("EOSR5_C0951E") stands in. */
+data class CameraProfile(val address: String, val bleName: String, val model: String? = null) {
+    val displayName: String get() = model ?: bleName
+}
 
 /**
  * Port implemented by [Prefs]; lets [CameraRepository] depend on an interface instead of the
@@ -48,6 +56,29 @@ class Prefs(context: Context) : PrefsPort {
     var cameraPsk: String?
         get() = prefs.getString(KEY_CAMERA_PSK, null)
         set(v) = prefs.edit().putString(KEY_CAMERA_PSK, v).apply()
+
+    /** App that "Open in …" hands RAWs to (a flattened ComponentName). */
+    var editorComponent: String?
+        get() = prefs.getString(KEY_EDITOR, null)
+        set(v) = prefs.edit().putString(KEY_EDITOR, v).apply()
+
+    /** Paired cameras, most recently used first. */
+    fun cameras(): List<CameraProfile> =
+        prefs.getString(KEY_CAMERAS, "").orEmpty().lines().filter { it.isNotBlank() }.map { line ->
+            val f = line.split('\t')
+            CameraProfile(f[0], f.getOrElse(1) { f[0] }, f.getOrNull(2)?.ifBlank { null })
+        }
+
+    /** Adds or updates [camera] and moves it to the top. */
+    @Synchronized
+    fun saveCamera(camera: CameraProfile) = storeCameras(listOf(camera) + cameras().filter { it.address != camera.address })
+
+    @Synchronized
+    fun removeCamera(address: String) = storeCameras(cameras().filter { it.address != address })
+
+    private fun storeCameras(list: List<CameraProfile>) = prefs.edit()
+        .putString(KEY_CAMERAS, list.joinToString("\n") { "${it.address}\t${it.bleName}\t${it.model.orEmpty()}" })
+        .apply()
 
     fun cameraCredentials(): WifiCredentials? {
         val s = cameraSsid; val p = cameraPsk

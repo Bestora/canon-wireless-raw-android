@@ -1,6 +1,20 @@
 package de.bestora.canonwirelessrawandroid.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -13,7 +27,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -48,48 +61,65 @@ fun ImageViewerScreen(
     container: AppContainer,
     item: GalleryItem,
     onBack: () -> Unit,
-    onDownload: () -> Unit,
+    onDownload: (openInEditor: Boolean) -> Unit,
 ) {
     val handle = item.obj.handle
+    val editorName = rememberEditorName(container.editor)
 
     // decode off the main thread; null while loading, Result once done
     val preview by produceState<Result<ImageBitmap>?>(initialValue = null, key1 = handle) {
         value = withContext(Dispatchers.IO) {
             runCatching {
                 val data = container.repo.loadPreview(handle)
-                    ?: error("No preview image found in the file")
+                    ?: error("This file has no preview image to show.")
                 val bmp = BitmapFactory.decodeByteArray(data.jpeg, 0, data.jpeg.size)
-                    ?: error("Failed to decode preview image")
+                    ?: error("The preview image could not be decoded.")
                 // Embedded preview JPEGs have no EXIF, so apply the CR3's orientation ourselves.
                 rotateForOrientation(bmp, data.orientation).asImageBitmap()
             }
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val result = preview
-            when {
-                result == null -> CircularProgressIndicator(color = Color.White)
-                result.isFailure -> Text(
-                    result.exceptionOrNull()?.message ?: "Error loading image",
-                    color = Color.White,
-                    modifier = Modifier.padding(24.dp),
-                )
-                else -> ZoomableImage(result.getOrThrow())
-            }
-
-            // Close button (top-left), always available.
-            TextButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                Text("Close", color = Color.White)
-            }
-            // Download this image without the back-and-long-press detour through the gallery.
-            TextButton(onClick = onDownload, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                Text("Download", color = Color.White)
+    AppTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black, contentColor = Palette.Paper) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    val result = preview
+                    when {
+                        result == null -> CircularProgressIndicator(color = Palette.Graphite)
+                        result.isFailure -> Text(
+                            result.exceptionOrNull()?.message ?: "The photo could not be loaded.",
+                            color = Palette.Graphite,
+                            modifier = Modifier.padding(24.dp),
+                        )
+                        else -> ZoomableImage(result.getOrThrow())
+                    }
+                    IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Palette.Paper)
+                    }
+                }
+                Column(modifier = Modifier.fillMaxWidth().background(Palette.LoupeGrey).padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(item.obj.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        item.rating?.takeIf { it > 0 }?.let { Text("★".repeat(it), color = Palette.Paper) }
+                    }
+                    Text(takenLabel(item.obj.takenAtMillis), style = MaterialTheme.typography.bodyMedium, color = Palette.Graphite)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        SecondaryButton("Download", { onDownload(false) }, Modifier.weight(1f))
+                        PrimaryButton(editorName?.let { "Open in $it" } ?: "Open in…", { onDownload(true) }, Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
 }
+
+private val TAKEN_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+
+private fun takenLabel(millis: Long): String =
+    if (millis <= 0) "Capture time unknown"
+    else Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDateTime().format(TAKEN_FORMAT)
 
 @Composable
 private fun ZoomableImage(image: ImageBitmap) {

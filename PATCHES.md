@@ -23,3 +23,18 @@ camera to the point of opening a session.
 **Fix:** treat `PTP_IP` like `PTP_IP_USB` for byte transport (both use
 `ptpip_cmd_write`); packet framing already diverges by `connection_type` elsewhere.
 One-line change to the `else if` condition.
+
+## 2. `src/transport.c` — `ptpip_read_packet` spins forever on a dead camera
+
+**Symptom:** When the camera closed the connection or went silent in the middle of
+a data packet (Wi-Fi drop, camera powering down during a thumbnail read or a
+download chunk), the transfer never returned. The app froze with the PTP mutex
+held, so "Disconnect" and every reconnect hung too until the app was killed.
+
+**Cause:** `ptpip_cmd_read()` returns `0` both on EOF and on a `SO_RCVTIMEO`
+timeout (it maps errno 11 to 0 bytes). The packet-body loop only bailed on
+`rc < 0`, so it kept re-reading 0 bytes forever.
+
+**Fix:** treat `rc <= 0` in the packet-body loop as `PTP_IO_ERR`. Reproduced and
+verified with a fake PTP/IP responder (scenarios `eof_mid_packet` and
+`stall_mid_packet`).

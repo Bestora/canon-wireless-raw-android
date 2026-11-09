@@ -13,10 +13,12 @@ android {
         applicationId = "de.bestora.canonwirelessrawandroid"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.3.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
+    // Debug installs next to a release build instead of colliding with its signature.
+    buildTypes { debug { applicationIdSuffix = ".debug" } }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
