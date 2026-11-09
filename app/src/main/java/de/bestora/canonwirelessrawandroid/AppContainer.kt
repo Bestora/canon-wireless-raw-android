@@ -1,11 +1,14 @@
 package de.bestora.canonwirelessrawandroid
 
 import android.content.Context
-import de.bestora.canonwirelessrawandroid.ble.BleWaker
+import de.bestora.canonwirelessrawandroid.ble.CanonBle
+import de.bestora.canonwirelessrawandroid.data.CameraConnector
 import de.bestora.canonwirelessrawandroid.data.CameraRepository
 import de.bestora.canonwirelessrawandroid.data.MetaCache
+import de.bestora.canonwirelessrawandroid.data.ObjectListCache
 import de.bestora.canonwirelessrawandroid.data.Prefs
 import de.bestora.canonwirelessrawandroid.ptp.PtpClient
+import de.bestora.canonwirelessrawandroid.ui.EditorLauncher
 import de.bestora.canonwirelessrawandroid.wifi.WifiConnector
 import java.io.File
 
@@ -24,7 +27,11 @@ object AppContainer {
         private set
     lateinit var wifi: WifiConnector
         private set
-    lateinit var ble: BleWaker
+    lateinit var ble: CanonBle
+        private set
+    lateinit var connector: CameraConnector
+        private set
+    lateinit var editor: EditorLauncher
         private set
 
     /** Idempotent: a second call (e.g. Activity re-creation) is a no-op. */
@@ -36,8 +43,10 @@ object AppContainer {
         // Versioned cache dir: bump the suffix whenever thumbnail/rating extraction logic changes
         // so stale entries (e.g. corrupt thumbnails from the old marker-scan) are abandoned.
         cache = MetaCache(File(appContext.cacheDir, "meta-v3"))
-        repo = CameraRepository(ptp, cache, prefs)
+        repo = CameraRepository(ptp, cache, prefs, lists = ObjectListCache(File(appContext.cacheDir, "lists-v1")))
         wifi = WifiConnector(appContext)
-        ble = BleWaker(appContext)
+        ble = CanonBle(appContext)
+        connector = CameraConnector(ble, wifi, repo, prefs)
+        editor = EditorLauncher(appContext, prefs)
     }
 }
